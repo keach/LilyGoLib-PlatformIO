@@ -16,12 +16,34 @@
 4. After restarting `Visual Studio Code`, select `File` in the upper left corner of `Visual Studio Code` -> `Open Folder` -> select the `LilyGoLib-PlatformIO` directory
 5. Wait for the installation of third-party dependent libraries to complete
 6. Click on the `platformio.ini` file, and in the `platformio` column
-7. Select the board name you want to use in `default_envs` and uncomment it.
-8. The default compiled sketch is [main.cpp](./src/main.cpp) in the src directory. If you need to compile an example in LilyGoLib, uncomment one of the lines src_dir = examples/xxxxx to enable it and make sure only one line is valid.
+7. Select the PlatformIO environment for the firmware and board you want to build.
+8. For T-Watch S3, use `twatchs3` for the factory firmware or `twatchs3_custom` for [`src/main.cpp`](./src/main.cpp).
 9. Click the (✔) symbol in the lower left corner to compile
 10. Connect the board to the computer USB
 11. Click (→) to upload firmware
 12. Click (plug symbol) to monitor serial output
+
+# `3` T-Watch S3 development environments
+
+The existing factory firmware and the local application are separate PlatformIO
+environments, so they can be built and maintained in parallel.
+
+* `twatchs3` builds the existing factory firmware from LilyGoLib.
+* `twatchs3_custom` builds the local application in [`src/main.cpp`](./src/main.cpp).
+
+Build either environment from the PlatformIO toolbar, or run:
+
+```sh
+pio run -e twatchs3
+pio run -e twatchs3_custom
+```
+
+Upload the selected firmware with:
+
+```sh
+pio run -e twatchs3 -t upload
+pio run -e twatchs3_custom -t upload
+```
 
 > \[!IMPORTANT]
 >
