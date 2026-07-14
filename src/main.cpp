@@ -74,9 +74,33 @@ void updateClock(lv_timer_t *)
                           timeinfo.tm_year + 1900);
 }
 
+void syncClockFromRtc()
+{
+    if ((instance.getDeviceProbe() & HW_RTC_ONLINE) == 0) {
+        showClockError("RTC NOT AVAILABLE");
+        return;
+    }
+
+    // Keep the ESP32 system clock aligned whenever this screen is shown.
+    // The labels still read the RTC directly so the hardware clock remains
+    // the single source of truth for the watch face.
+    instance.rtc.hwClockRead();
+    last_second = -1;
+    updateClock(nullptr);
+}
+
+void clockScreenEventCallback(lv_event_t *event)
+{
+    if (lv_event_get_code(event) == LV_EVENT_SCREEN_LOADED) {
+        syncClockFromRtc();
+    }
+}
+
 void createClockScreen()
 {
     lv_obj_t *screen = lv_screen_active();
+    lv_obj_add_event_cb(screen, clockScreenEventCallback,
+                        LV_EVENT_SCREEN_LOADED, nullptr);
     lv_obj_set_style_bg_color(screen, lv_color_hex(kBackgroundColor), 0);
     lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
     lv_obj_set_style_text_color(screen, lv_color_hex(kPrimaryColor), 0);
@@ -113,7 +137,9 @@ void setup()
     beginLvglHelper(instance);
 
     createClockScreen();
-    updateClock(nullptr);
+    // The initial active screen has already been loaded before its callback is
+    // registered, so synchronize it explicitly on first boot as well.
+    syncClockFromRtc();
     lv_timer_create(updateClock, 250, nullptr);
 
     instance.setBrightness(DEVICE_MAX_BRIGHTNESS_LEVEL);
