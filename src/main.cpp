@@ -36,7 +36,10 @@ constexpr uint32_t kNtpSyncTimeoutMs = 15 * 1000;
 constexpr uint32_t kWiFiRetryIntervalMs = 15 * 60 * 1000;
 constexpr time_t kNtpSyncIntervalSeconds = 24 * 60 * 60;
 constexpr time_t kMinimumValidEpoch = 1577836800;  // 2020-01-01 UTC
-constexpr uint8_t kActiveBrightness = 180;
+constexpr uint8_t kDefaultBrightness = 180;
+constexpr uint8_t kMinimumBrightness = 20;
+constexpr uint8_t kMaximumBrightness = 255;
+constexpr uint8_t kBrightnessStep = 10;
 constexpr int kMinimumYear = 2000;
 constexpr int kMaximumYear = 2099;
 
@@ -77,12 +80,16 @@ const char *const kFieldNames[] = {
 
 lv_obj_t *clock_screen;
 lv_obj_t *settings_screen;
+lv_obj_t *brightness_screen;
 lv_obj_t *time_label;
 lv_obj_t *weekday_label;
 lv_obj_t *date_label;
 lv_obj_t *battery_label;
 lv_obj_t *time_sync_label;
 lv_obj_t *settings_status_label;
+lv_obj_t *brightness_slider;
+lv_obj_t *brightness_value_label;
+lv_obj_t *brightness_status_label;
 lv_obj_t *wake_overlay;
 lv_obj_t *field_buttons[static_cast<uint8_t>(SettingField::Count)];
 lv_obj_t *field_labels[static_cast<uint8_t>(SettingField::Count)];
@@ -98,6 +105,8 @@ int last_second = -1;
 uint32_t last_activity_ms = 0;
 uint32_t screen_off_ms = 0;
 bool screen_on = true;
+uint8_t active_brightness = kDefaultBrightness;
+uint8_t pending_brightness = kDefaultBrightness;
 TimeSyncState time_sync_state = TimeSyncState::Idle;
 size_t wifi_credential_index = 0;
 uint32_t time_sync_state_started_ms = 0;
@@ -150,6 +159,13 @@ void markUserActivity(lv_event_t *)
     last_activity_ms = millis();
 }
 
+uint8_t currentDisplayBrightness()
+{
+    return lv_screen_active() == brightness_screen
+               ? pending_brightness
+               : active_brightness;
+}
+
 void wakeScreen(bool keep_wake_overlay = false)
 {
     last_activity_ms = millis();
@@ -161,7 +177,7 @@ void wakeScreen(bool keep_wake_overlay = false)
     if (!keep_wake_overlay) {
         lv_obj_add_flag(wake_overlay, LV_OBJ_FLAG_HIDDEN);
     }
-    instance.setBrightness(kActiveBrightness);
+    instance.setBrightness(currentDisplayBrightness());
     syncClockFromRtc();
     updateBatteryStatus(nullptr);
     requestTimeSyncIfDue();
@@ -239,9 +255,9 @@ void deviceEventCallback(DeviceEvent_t event, void *params, void *)
 
 uint32_t currentScreenTimeout()
 {
-    return lv_screen_active() == settings_screen
-               ? kSettingsScreenTimeoutMs
-               : kClockScreenTimeoutMs;
+    return lv_screen_active() == clock_screen
+               ? kClockScreenTimeoutMs
+               : kSettingsScreenTimeoutMs;
 }
 
 void styleScreen(lv_obj_t *screen)
@@ -404,6 +420,37 @@ bool isNtpSyncDue()
         return true;
     }
     return now - last_ntp_sync_epoch >= kNtpSyncIntervalSeconds;
+}
+
+void loadBrightnessSetting()
+{
+    Preferences preferences;
+    if (!preferences.begin("clock_config", true)) {
+        Serial.println("Unable to read brightness setting");
+        return;
+    }
+    const uint8_t stored_brightness =
+        preferences.getUChar("brightness", kDefaultBrightness);
+    preferences.end();
+
+    active_brightness =
+        stored_brightness >= kMinimumBrightness
+            ? stored_brightness
+            : kDefaultBrightness;
+    pending_brightness = active_brightness;
+}
+
+bool saveBrightnessSetting()
+{
+    Preferences preferences;
+    if (!preferences.begin("clock_config", false)) {
+        Serial.println("Unable to save brightness setting");
+        return false;
+    }
+    const size_t bytes_written =
+        preferences.putUChar("brightness", active_brightness);
+    preferences.end();
+    return bytes_written == sizeof(active_brightness);
 }
 
 void loadLastNtpSync()
@@ -686,6 +733,89 @@ void showClockScreen(lv_event_t *)
                         180, 0, false);
 }
 
+void updateBrightnessControls()
+{
+    lv_slider_set_value(brightness_slider, pending_brightness, LV_ANIM_OFF);
+    const unsigned percent =
+        (static_cast<unsigned>(pending_brightness) * 100 + 127) / 255;
+    lv_label_set_text_fmt(brightness_value_label, "%u%%", percent);
+    instance.setBrightness(pending_brightness);
+}
+
+void brightnessSliderCallback(lv_event_t *)
+{
+    last_activity_ms = millis();
+    pending_brightness = static_cast<uint8_t>(
+        lv_slider_get_value(brightness_slider));
+    updateBrightnessControls();
+}
+
+void adjustBrightness(int amount)
+{
+    int adjusted = static_cast<int>(pending_brightness) + amount;
+    if (adjusted < kMinimumBrightness) {
+        adjusted = kMinimumBrightness;
+    }
+    if (adjusted > kMaximumBrightness) {
+        adjusted = kMaximumBrightness;
+    }
+    pending_brightness = static_cast<uint8_t>(adjusted);
+    last_activity_ms = millis();
+    updateBrightnessControls();
+}
+
+void decreaseBrightnessCallback(lv_event_t *)
+{
+    adjustBrightness(-kBrightnessStep);
+}
+
+void increaseBrightnessCallback(lv_event_t *)
+{
+    adjustBrightness(kBrightnessStep);
+}
+
+void brightnessScreenEventCallback(lv_event_t *event)
+{
+    if (lv_event_get_code(event) != LV_EVENT_SCREEN_LOAD_START) {
+        return;
+    }
+    last_activity_ms = millis();
+    pending_brightness = active_brightness;
+    lv_label_set_text(brightness_status_label, "PREVIEW - SAVE TO KEEP");
+    lv_obj_set_style_text_color(brightness_status_label,
+                                lv_color_hex(kMutedColor), 0);
+    updateBrightnessControls();
+}
+
+void showBrightnessScreen(lv_event_t *)
+{
+    lv_screen_load_anim(brightness_screen, LV_SCR_LOAD_ANIM_MOVE_LEFT,
+                        180, 0, false);
+}
+
+void cancelBrightnessCallback(lv_event_t *)
+{
+    pending_brightness = active_brightness;
+    instance.setBrightness(active_brightness);
+    showClockScreen(nullptr);
+}
+
+void saveBrightnessCallback(lv_event_t *)
+{
+    const uint8_t previous_brightness = active_brightness;
+    active_brightness = pending_brightness;
+    if (!saveBrightnessSetting()) {
+        active_brightness = previous_brightness;
+        lv_label_set_text(brightness_status_label, "SAVE FAILED");
+        lv_obj_set_style_text_color(brightness_status_label,
+                                    lv_color_hex(kLowBatteryColor), 0);
+        return;
+    }
+
+    Serial.printf("Brightness saved: %u\n", active_brightness);
+    showClockScreen(nullptr);
+}
+
 void saveSettingsCallback(lv_event_t *)
 {
     if ((instance.getDeviceProbe() & HW_RTC_ONLINE) == 0) {
@@ -740,6 +870,8 @@ void createClockScreen()
     lv_obj_set_style_text_color(title_label, lv_color_hex(kAccentColor), 0);
     lv_obj_align(title_label, LV_ALIGN_TOP_LEFT, 18, 24);
 
+    createButton(clock_screen, "BRI", 126, 14, 44, 30,
+                 showBrightnessScreen);
     createButton(clock_screen, "SET", 176, 14, 50, 30,
                  showSettingsScreen);
 
@@ -850,6 +982,72 @@ void createSettingsScreen()
                                 lv_color_hex(kBackgroundColor), 0);
 }
 
+void createBrightnessScreen()
+{
+    brightness_screen = lv_obj_create(nullptr);
+    styleScreen(brightness_screen);
+    lv_obj_add_event_cb(brightness_screen, markUserActivity,
+                        LV_EVENT_PRESSED, nullptr);
+    lv_obj_add_event_cb(brightness_screen, brightnessScreenEventCallback,
+                        LV_EVENT_SCREEN_LOAD_START, nullptr);
+
+    lv_obj_t *title = lv_label_create(brightness_screen);
+    lv_label_set_text(title, "DISPLAY BRIGHTNESS");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(kAccentColor), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 18);
+
+    brightness_value_label = lv_label_create(brightness_screen);
+    lv_label_set_text(brightness_value_label, "71%");
+    lv_obj_set_style_text_font(brightness_value_label,
+                               &lv_font_montserrat_40, 0);
+    lv_obj_set_style_text_color(brightness_value_label,
+                                lv_color_hex(kPrimaryColor), 0);
+    lv_obj_align(brightness_value_label, LV_ALIGN_TOP_MID, 0, 50);
+
+    brightness_slider = lv_slider_create(brightness_screen);
+    lv_obj_set_pos(brightness_slider, 24, 98);
+    lv_obj_set_size(brightness_slider, 192, 18);
+    lv_slider_set_range(brightness_slider,
+                        kMinimumBrightness, kMaximumBrightness);
+    lv_obj_set_style_bg_color(brightness_slider,
+                              lv_color_hex(kButtonColor), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(brightness_slider,
+                              lv_color_hex(kAccentColor), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(brightness_slider,
+                              lv_color_hex(kPrimaryColor), LV_PART_KNOB);
+    lv_obj_add_event_cb(brightness_slider, brightnessSliderCallback,
+                        LV_EVENT_VALUE_CHANGED, nullptr);
+
+    lv_obj_t *decrease = createButton(brightness_screen, LV_SYMBOL_MINUS,
+                                      35, 130, 75, 42,
+                                      decreaseBrightnessCallback);
+    lv_obj_t *increase = createButton(brightness_screen, LV_SYMBOL_PLUS,
+                                      130, 130, 75, 42,
+                                      increaseBrightnessCallback);
+    lv_obj_add_event_cb(decrease, decreaseBrightnessCallback,
+                        LV_EVENT_LONG_PRESSED_REPEAT, nullptr);
+    lv_obj_add_event_cb(increase, increaseBrightnessCallback,
+                        LV_EVENT_LONG_PRESSED_REPEAT, nullptr);
+
+    brightness_status_label = lv_label_create(brightness_screen);
+    lv_label_set_text(brightness_status_label, "PREVIEW - SAVE TO KEEP");
+    lv_obj_set_style_text_font(brightness_status_label,
+                               &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(brightness_status_label,
+                                lv_color_hex(kMutedColor), 0);
+    lv_obj_align(brightness_status_label, LV_ALIGN_TOP_MID, 0, 180);
+
+    createButton(brightness_screen, "CANCEL", 15, 202, 100, 30,
+                 cancelBrightnessCallback);
+    lv_obj_t *save = createButton(brightness_screen, "SAVE",
+                                  125, 202, 100, 30,
+                                  saveBrightnessCallback);
+    lv_obj_set_style_bg_color(save, lv_color_hex(kAccentColor), 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(save, 0),
+                                lv_color_hex(kBackgroundColor), 0);
+}
+
 void createWakeOverlay()
 {
     wake_overlay = lv_obj_create(lv_layer_top());
@@ -874,9 +1072,11 @@ void setup()
     tzset();
     instance.begin();
     beginLvglHelper(instance);
+    loadBrightnessSetting();
 
     createClockScreen();
     createSettingsScreen();
+    createBrightnessScreen();
     createWakeOverlay();
     syncClockFromRtc();
     updateBatteryStatus(nullptr);
@@ -887,7 +1087,7 @@ void setup()
     sntp_set_time_sync_notification_cb(ntpTimeAvailableCallback);
     loadLastNtpSync();
     last_activity_ms = millis();
-    instance.setBrightness(kActiveBrightness);
+    instance.setBrightness(active_brightness);
     requestTimeSyncIfDue();
 }
 

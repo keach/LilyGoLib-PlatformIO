@@ -22,6 +22,7 @@ UTC+9).
 - English weekday and date display
 - RTC synchronization whenever the clock screen is shown
 - Manual date and time settings screen
+- Separate display brightness screen with persistent NVS storage
 - Automatic display timeout
 - Light Sleep after the display turns off
 - Wake by touch panel or power button
@@ -107,6 +108,9 @@ pio run -e twatchs3_custom -t upload --upload-port /dev/cu.usbmodemXXXXXX
 
 ### Clock and power behavior
 
+- Use `BRI` on the clock screen to open the brightness screen.
+- Brightness changes are previewed immediately; `SAVE` persists the value to
+  NVS and `CANCEL` restores the previous value.
 - The clock screen turns off after 15 seconds of inactivity.
 - The settings screen turns off after 60 seconds of inactivity.
 - Light Sleep begins 5 seconds after the display turns off.
@@ -154,6 +158,7 @@ pio run -e twatchs3_custom -t upload --upload-port /dev/cu.usbmodemXXXXXX
 - 英語の曜日・日付表示
 - 時計画面が表示されるたびにRTCと同期
 - 日付と時刻の手動設定画面
+- NVSへ設定を保存する独立した画面明るさ設定
 - 画面の自動消灯
 - 消灯後のLight Sleep
 - タッチパネルまたは電源ボタンによる復帰
@@ -239,6 +244,9 @@ pio run -e twatchs3_custom -t upload --upload-port /dev/cu.usbmodemXXXXXX
 
 ### 時計・省電力動作
 
+- 時計画面の`BRI`から明るさ設定画面を開きます。
+- 明るさは操作中に即時反映され、`SAVE`でNVSへ保存、`CANCEL`で変更前の値へ
+  戻ります。
 - 時計画面は15秒間操作がないと消灯します。
 - 設定画面は60秒間操作がないと消灯します。
 - 消灯から5秒後にLight Sleepへ移行します。
