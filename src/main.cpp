@@ -14,6 +14,9 @@ constexpr uint32_t kPrimaryColor = 0xF2F5F7;
 constexpr uint32_t kAccentColor = 0x55C2FF;
 constexpr uint32_t kMutedColor = 0x94A3AD;
 constexpr uint32_t kButtonColor = 0x24323D;
+constexpr uint32_t kClockScreenTimeoutMs = 15 * 1000;
+constexpr uint32_t kSettingsScreenTimeoutMs = 60 * 1000;
+constexpr uint8_t kActiveBrightness = 180;
 constexpr int kMinimumYear = 2000;
 constexpr int kMaximumYear = 2099;
 
@@ -47,6 +50,7 @@ lv_obj_t *time_label;
 lv_obj_t *weekday_label;
 lv_obj_t *date_label;
 lv_obj_t *settings_status_label;
+lv_obj_t *wake_overlay;
 lv_obj_t *field_buttons[static_cast<uint8_t>(SettingField::Count)];
 lv_obj_t *field_labels[static_cast<uint8_t>(SettingField::Count)];
 
@@ -58,6 +62,10 @@ int setting_hour = 0;
 int setting_minute = 0;
 int setting_second = 0;
 int last_second = -1;
+uint32_t last_activity_ms = 0;
+bool screen_on = true;
+
+void syncClockFromRtc();
 
 bool isValidDateTime(const struct tm &timeinfo)
 {
@@ -94,6 +102,60 @@ int wrapValue(int value, int minimum, int maximum)
     return value;
 }
 
+void markUserActivity(lv_event_t *)
+{
+    last_activity_ms = millis();
+}
+
+void wakeScreen()
+{
+    last_activity_ms = millis();
+    if (screen_on) {
+        return;
+    }
+
+    screen_on = true;
+    lv_obj_add_flag(wake_overlay, LV_OBJ_FLAG_HIDDEN);
+    instance.setBrightness(kActiveBrightness);
+    syncClockFromRtc();
+    Serial.println("Display awake");
+}
+
+void turnScreenOff()
+{
+    if (!screen_on) {
+        return;
+    }
+
+    // The overlay consumes the first wake-up touch so it cannot accidentally
+    // activate a control beneath it.
+    lv_obj_remove_flag(wake_overlay, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(wake_overlay);
+    screen_on = false;
+    instance.setBrightness(0);
+    Serial.println("Display off");
+}
+
+void wakeOverlayCallback(lv_event_t *)
+{
+    wakeScreen();
+}
+
+void deviceEventCallback(DeviceEvent_t event, void *params, void *)
+{
+    if (event == POWER_EVENT &&
+        instance.getPMUEventType(params) == PMU_EVENT_KEY_CLICKED) {
+        wakeScreen();
+    }
+}
+
+uint32_t currentScreenTimeout()
+{
+    return lv_screen_active() == settings_screen
+               ? kSettingsScreenTimeoutMs
+               : kClockScreenTimeoutMs;
+}
+
 void styleScreen(lv_obj_t *screen)
 {
     lv_obj_set_style_bg_color(screen, lv_color_hex(kBackgroundColor), 0);
@@ -120,6 +182,7 @@ lv_obj_t *createButton(lv_obj_t *parent, const char *text,
     lv_obj_set_pos(button, x, y);
     lv_obj_set_size(button, width, height);
     styleButton(button);
+    lv_obj_add_event_cb(button, markUserActivity, LV_EVENT_PRESSED, nullptr);
     lv_obj_add_event_cb(button, callback, LV_EVENT_CLICKED, nullptr);
 
     lv_obj_t *label = lv_label_create(button);
@@ -138,7 +201,7 @@ void showClockError(const char *message)
 
 void updateClock(lv_timer_t *)
 {
-    if (lv_screen_active() != clock_screen) {
+    if (!screen_on || lv_screen_active() != clock_screen) {
         return;
     }
     if ((instance.getDeviceProbe() & HW_RTC_ONLINE) == 0) {
@@ -304,6 +367,7 @@ void saveSettingsCallback(lv_event_t *)
 void settingsScreenEventCallback(lv_event_t *event)
 {
     if (lv_event_get_code(event) == LV_EVENT_SCREEN_LOAD_START) {
+        last_activity_ms = millis();
         loadSettingValues();
     }
 }
@@ -325,6 +389,8 @@ void createClockScreen()
 {
     clock_screen = lv_screen_active();
     styleScreen(clock_screen);
+    lv_obj_add_event_cb(clock_screen, markUserActivity,
+                        LV_EVENT_PRESSED, nullptr);
     lv_obj_add_event_cb(clock_screen, clockScreenEventCallback,
                         LV_EVENT_SCREEN_LOADED, nullptr);
 
@@ -361,6 +427,7 @@ void createFieldButton(SettingField field, int x, int y, int width)
     lv_obj_set_pos(button, x, y);
     lv_obj_set_size(button, width, 36);
     styleButton(button);
+    lv_obj_add_event_cb(button, markUserActivity, LV_EVENT_PRESSED, nullptr);
     lv_obj_add_event_cb(button, fieldButtonCallback, LV_EVENT_CLICKED,
                         reinterpret_cast<void *>(static_cast<uintptr_t>(index)));
 
@@ -374,6 +441,8 @@ void createSettingsScreen()
 {
     settings_screen = lv_obj_create(nullptr);
     styleScreen(settings_screen);
+    lv_obj_add_event_cb(settings_screen, markUserActivity,
+                        LV_EVENT_PRESSED, nullptr);
     lv_obj_add_event_cb(settings_screen, settingsScreenEventCallback,
                         LV_EVENT_SCREEN_LOAD_START, nullptr);
 
@@ -429,6 +498,21 @@ void createSettingsScreen()
                                 lv_color_hex(kBackgroundColor), 0);
 }
 
+void createWakeOverlay()
+{
+    wake_overlay = lv_obj_create(lv_layer_top());
+    lv_obj_set_pos(wake_overlay, 0, 0);
+    lv_obj_set_size(wake_overlay, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_opa(wake_overlay, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(wake_overlay, 0, 0);
+    lv_obj_set_style_pad_all(wake_overlay, 0, 0);
+    lv_obj_clear_flag(wake_overlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(wake_overlay, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(wake_overlay, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_event_cb(wake_overlay, wakeOverlayCallback,
+                        LV_EVENT_PRESSED, nullptr);
+}
+
 }  // namespace
 
 void setup()
@@ -439,14 +523,23 @@ void setup()
 
     createClockScreen();
     createSettingsScreen();
+    createWakeOverlay();
     syncClockFromRtc();
     lv_timer_create(updateClock, 250, nullptr);
 
-    instance.setBrightness(DEVICE_MAX_BRIGHTNESS_LEVEL);
+    instance.onEvent(deviceEventCallback, POWER_EVENT, nullptr);
+    last_activity_ms = millis();
+    instance.setBrightness(kActiveBrightness);
 }
 
 void loop()
 {
+    instance.loop();
     lv_timer_handler();
-    delay(2);
+
+    if (screen_on && millis() - last_activity_ms >= currentScreenTimeout()) {
+        turnScreenOff();
+    }
+
+    delay(screen_on ? 2 : 20);
 }
