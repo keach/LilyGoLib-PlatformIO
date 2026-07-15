@@ -1,11 +1,23 @@
 /**
- * Minimal T-Watch S3 clock face with manual RTC adjustment.
+ * T-Watch S3 clock face with RTC adjustment and NTP synchronization.
  */
 #include <LilyGoLib.h>
 #include <LV_Helper.h>
+#include <Preferences.h>
+#include <WiFi.h>
+#include <esp_sntp.h>
 
 #include <stdint.h>
 #include <time.h>
+
+#include "wifi_credentials_types.h"
+
+#if __has_include("wifi_credentials.h")
+#include "wifi_credentials.h"
+#else
+inline constexpr const WiFiCredential *kWiFiCredentials = nullptr;
+inline constexpr size_t kWiFiCredentialCount = 0;
+#endif
 
 namespace {
 
@@ -19,9 +31,19 @@ constexpr uint32_t kClockScreenTimeoutMs = 15 * 1000;
 constexpr uint32_t kSettingsScreenTimeoutMs = 60 * 1000;
 constexpr uint32_t kLightSleepDelayMs = 5 * 1000;
 constexpr uint32_t kBatteryUpdateIntervalMs = 10 * 1000;
+constexpr uint32_t kWiFiConnectTimeoutMs = 10 * 1000;
+constexpr uint32_t kNtpSyncTimeoutMs = 15 * 1000;
+constexpr uint32_t kWiFiRetryIntervalMs = 15 * 60 * 1000;
+constexpr time_t kNtpSyncIntervalSeconds = 24 * 60 * 60;
+constexpr time_t kMinimumValidEpoch = 1577836800;  // 2020-01-01 UTC
 constexpr uint8_t kActiveBrightness = 180;
 constexpr int kMinimumYear = 2000;
 constexpr int kMaximumYear = 2099;
+
+const char *const kTimeZone = "JST-9";
+const char *const kNtpServer1 = "pool.ntp.org";
+const char *const kNtpServer2 = "time.google.com";
+const char *const kNtpServer3 = "ntp.nict.jp";
 
 const char *const kWeekdays[] = {
     "SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY",
@@ -43,6 +65,12 @@ enum class SettingField : uint8_t {
     Count,
 };
 
+enum class TimeSyncState : uint8_t {
+    Idle,
+    Connecting,
+    WaitingForNtp,
+};
+
 const char *const kFieldNames[] = {
     "YEAR", "MONTH", "DAY", "HOUR", "MINUTE", "SECOND",
 };
@@ -53,6 +81,7 @@ lv_obj_t *time_label;
 lv_obj_t *weekday_label;
 lv_obj_t *date_label;
 lv_obj_t *battery_label;
+lv_obj_t *time_sync_label;
 lv_obj_t *settings_status_label;
 lv_obj_t *wake_overlay;
 lv_obj_t *field_buttons[static_cast<uint8_t>(SettingField::Count)];
@@ -69,9 +98,17 @@ int last_second = -1;
 uint32_t last_activity_ms = 0;
 uint32_t screen_off_ms = 0;
 bool screen_on = true;
+TimeSyncState time_sync_state = TimeSyncState::Idle;
+size_t wifi_credential_index = 0;
+uint32_t time_sync_state_started_ms = 0;
+uint32_t wifi_retry_not_before_ms = 0;
+time_t last_ntp_sync_epoch = 0;
+volatile bool ntp_sync_received = false;
 
 void syncClockFromRtc();
 void updateBatteryStatus(lv_timer_t *);
+void requestTimeSyncIfDue();
+bool isTimeSyncBusy();
 
 bool isValidDateTime(const struct tm &timeinfo)
 {
@@ -127,6 +164,7 @@ void wakeScreen(bool keep_wake_overlay = false)
     instance.setBrightness(kActiveBrightness);
     syncClockFromRtc();
     updateBatteryStatus(nullptr);
+    requestTimeSyncIfDue();
     Serial.println("Display awake");
 }
 
@@ -342,6 +380,194 @@ void updateBatteryStatus(lv_timer_t *)
     }
 }
 
+void setTimeSyncStatus(const char *status, uint32_t color = kMutedColor)
+{
+    if (time_sync_label == nullptr) {
+        return;
+    }
+    lv_label_set_text(time_sync_label, status);
+    lv_obj_set_style_text_color(time_sync_label, lv_color_hex(color), 0);
+}
+
+bool isTimeSyncBusy()
+{
+    return time_sync_state != TimeSyncState::Idle;
+}
+
+bool isNtpSyncDue()
+{
+    const time_t now = time(nullptr);
+    if (now < kMinimumValidEpoch || last_ntp_sync_epoch < kMinimumValidEpoch) {
+        return true;
+    }
+    if (now < last_ntp_sync_epoch) {
+        return true;
+    }
+    return now - last_ntp_sync_epoch >= kNtpSyncIntervalSeconds;
+}
+
+void loadLastNtpSync()
+{
+    Preferences preferences;
+    if (!preferences.begin("clock_sync", true)) {
+        Serial.println("Unable to read NTP sync history");
+        return;
+    }
+    last_ntp_sync_epoch = static_cast<time_t>(
+        preferences.getULong64("last_ntp", 0));
+    preferences.end();
+}
+
+void saveLastNtpSync()
+{
+    Preferences preferences;
+    if (!preferences.begin("clock_sync", false)) {
+        Serial.println("Unable to save NTP sync history");
+        return;
+    }
+    preferences.putULong64("last_ntp",
+                           static_cast<uint64_t>(last_ntp_sync_epoch));
+    preferences.end();
+}
+
+void ntpTimeAvailableCallback(struct timeval *)
+{
+    // This callback runs in the TCP/IP task. RTC, LVGL, and Preferences work
+    // remains in loop() so those components are only touched from one task.
+    ntp_sync_received = true;
+}
+
+void stopTimeSyncRadio()
+{
+    if (time_sync_state == TimeSyncState::WaitingForNtp) {
+        esp_sntp_stop();
+    }
+    WiFi.disconnect(true, false);
+    time_sync_state = TimeSyncState::Idle;
+}
+
+bool startCurrentWiFiNetwork()
+{
+    while (wifi_credential_index < kWiFiCredentialCount) {
+        const WiFiCredential &credential =
+            kWiFiCredentials[wifi_credential_index];
+        if (credential.ssid != nullptr && credential.ssid[0] != '\0') {
+            WiFi.disconnect(false, false);
+            WiFi.begin(credential.ssid,
+                       credential.password == nullptr ? "" : credential.password);
+            time_sync_state = TimeSyncState::Connecting;
+            time_sync_state_started_ms = millis();
+            lv_label_set_text_fmt(time_sync_label, "WIFI %u/%u",
+                                  static_cast<unsigned>(wifi_credential_index + 1),
+                                  static_cast<unsigned>(kWiFiCredentialCount));
+            lv_obj_set_style_text_color(time_sync_label,
+                                        lv_color_hex(kAccentColor), 0);
+            Serial.printf("Connecting to Wi-Fi network %u of %u\n",
+                          static_cast<unsigned>(wifi_credential_index + 1),
+                          static_cast<unsigned>(kWiFiCredentialCount));
+            return true;
+        }
+        ++wifi_credential_index;
+    }
+    return false;
+}
+
+void failTimeSync(const char *reason)
+{
+    Serial.printf("Time sync failed: %s\n", reason);
+    stopTimeSyncRadio();
+    wifi_retry_not_before_ms = millis() + kWiFiRetryIntervalMs;
+    setTimeSyncStatus("NTP RETRY LATER", kLowBatteryColor);
+}
+
+void requestTimeSyncIfDue()
+{
+    if (isTimeSyncBusy()) {
+        return;
+    }
+    if (kWiFiCredentialCount == 0) {
+        setTimeSyncStatus("NTP NOT CONFIGURED");
+        return;
+    }
+    if (!isNtpSyncDue()) {
+        setTimeSyncStatus("NTP CURRENT");
+        return;
+    }
+    if (wifi_retry_not_before_ms != 0 &&
+        static_cast<int32_t>(millis() - wifi_retry_not_before_ms) < 0) {
+        return;
+    }
+
+    WiFi.mode(WIFI_STA);
+    WiFi.setAutoReconnect(false);
+    wifi_credential_index = 0;
+    if (!startCurrentWiFiNetwork()) {
+        failTimeSync("no usable Wi-Fi credentials");
+    }
+}
+
+void completeNtpSync()
+{
+    const time_t now = time(nullptr);
+    if (now < kMinimumValidEpoch) {
+        failTimeSync("NTP returned an invalid time");
+        return;
+    }
+    if ((instance.getDeviceProbe() & HW_RTC_ONLINE) == 0 ||
+        instance.rtc.hwClockWrite() != 0) {
+        failTimeSync("RTC update failed");
+        return;
+    }
+
+    last_ntp_sync_epoch = now;
+    saveLastNtpSync();
+    stopTimeSyncRadio();
+    syncClockFromRtc();
+    setTimeSyncStatus("NTP SYNCED", kAccentColor);
+    Serial.println("NTP time written to RTC");
+}
+
+void processTimeSync()
+{
+    switch (time_sync_state) {
+    case TimeSyncState::Idle:
+        return;
+
+    case TimeSyncState::Connecting:
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.printf("Wi-Fi connected: %s\n", WiFi.SSID().c_str());
+            ntp_sync_received = false;
+            time_sync_state = TimeSyncState::WaitingForNtp;
+            time_sync_state_started_ms = millis();
+            setTimeSyncStatus("NTP SYNCING", kAccentColor);
+            configTzTime(kTimeZone, kNtpServer1, kNtpServer2, kNtpServer3);
+            return;
+        }
+        if (millis() - time_sync_state_started_ms >= kWiFiConnectTimeoutMs) {
+            ++wifi_credential_index;
+            if (!startCurrentWiFiNetwork()) {
+                failTimeSync("all Wi-Fi networks unavailable");
+            }
+        }
+        return;
+
+    case TimeSyncState::WaitingForNtp:
+        if (ntp_sync_received) {
+            ntp_sync_received = false;
+            completeNtpSync();
+            return;
+        }
+        if (WiFi.status() != WL_CONNECTED) {
+            failTimeSync("Wi-Fi disconnected during NTP sync");
+            return;
+        }
+        if (millis() - time_sync_state_started_ms >= kNtpSyncTimeoutMs) {
+            failTimeSync("NTP timeout");
+        }
+        return;
+    }
+}
+
 void syncClockFromRtc()
 {
     if ((instance.getDeviceProbe() & HW_RTC_ONLINE) == 0) {
@@ -495,6 +721,7 @@ void clockScreenEventCallback(lv_event_t *event)
     if (lv_event_get_code(event) == LV_EVENT_SCREEN_LOADED) {
         syncClockFromRtc();
         updateBatteryStatus(nullptr);
+        requestTimeSyncIfDue();
     }
 }
 
@@ -515,6 +742,12 @@ void createClockScreen()
 
     createButton(clock_screen, "SET", 176, 14, 50, 30,
                  showSettingsScreen);
+
+    time_sync_label = lv_label_create(clock_screen);
+    lv_label_set_text(time_sync_label, "NTP CHECK");
+    lv_obj_set_style_text_font(time_sync_label, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(time_sync_label, lv_color_hex(kMutedColor), 0);
+    lv_obj_align(time_sync_label, LV_ALIGN_TOP_LEFT, 18, 46);
 
     time_label = lv_label_create(clock_screen);
     lv_label_set_text(time_label, "--:--:--");
@@ -637,6 +870,8 @@ void createWakeOverlay()
 void setup()
 {
     Serial.begin(115200);
+    setenv("TZ", kTimeZone, 1);
+    tzset();
     instance.begin();
     beginLvglHelper(instance);
 
@@ -649,20 +884,25 @@ void setup()
     lv_timer_create(updateBatteryStatus, kBatteryUpdateIntervalMs, nullptr);
 
     instance.onEvent(deviceEventCallback, POWER_EVENT, nullptr);
+    sntp_set_time_sync_notification_cb(ntpTimeAvailableCallback);
+    loadLastNtpSync();
     last_activity_ms = millis();
     instance.setBrightness(kActiveBrightness);
+    requestTimeSyncIfDue();
 }
 
 void loop()
 {
     instance.loop();
     lv_timer_handler();
+    processTimeSync();
 
     if (screen_on && millis() - last_activity_ms >= currentScreenTimeout()) {
         turnScreenOff();
     }
 
-    if (!screen_on && millis() - screen_off_ms >= kLightSleepDelayMs) {
+    if (!screen_on && !isTimeSyncBusy() &&
+        millis() - screen_off_ms >= kLightSleepDelayMs) {
         enterLightSleep();
     }
 
