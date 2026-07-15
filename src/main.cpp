@@ -17,6 +17,7 @@ constexpr uint32_t kButtonColor = 0x24323D;
 constexpr uint32_t kLowBatteryColor = 0xFF6B6B;
 constexpr uint32_t kClockScreenTimeoutMs = 15 * 1000;
 constexpr uint32_t kSettingsScreenTimeoutMs = 60 * 1000;
+constexpr uint32_t kLightSleepDelayMs = 5 * 1000;
 constexpr uint32_t kBatteryUpdateIntervalMs = 10 * 1000;
 constexpr uint8_t kActiveBrightness = 180;
 constexpr int kMinimumYear = 2000;
@@ -66,6 +67,7 @@ int setting_minute = 0;
 int setting_second = 0;
 int last_second = -1;
 uint32_t last_activity_ms = 0;
+uint32_t screen_off_ms = 0;
 bool screen_on = true;
 
 void syncClockFromRtc();
@@ -111,7 +113,7 @@ void markUserActivity(lv_event_t *)
     last_activity_ms = millis();
 }
 
-void wakeScreen()
+void wakeScreen(bool keep_wake_overlay = false)
 {
     last_activity_ms = millis();
     if (screen_on) {
@@ -119,7 +121,9 @@ void wakeScreen()
     }
 
     screen_on = true;
-    lv_obj_add_flag(wake_overlay, LV_OBJ_FLAG_HIDDEN);
+    if (!keep_wake_overlay) {
+        lv_obj_add_flag(wake_overlay, LV_OBJ_FLAG_HIDDEN);
+    }
     instance.setBrightness(kActiveBrightness);
     syncClockFromRtc();
     updateBatteryStatus(nullptr);
@@ -137,13 +141,40 @@ void turnScreenOff()
     lv_obj_remove_flag(wake_overlay, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(wake_overlay);
     screen_on = false;
+    screen_off_ms = millis();
     instance.setBrightness(0);
     Serial.println("Display off");
 }
 
 void wakeOverlayCallback(lv_event_t *)
 {
+    if (screen_on) {
+        // A touch that woke the CPU from light sleep is consumed here before
+        // normal controls are made available again.
+        last_activity_ms = millis();
+        lv_obj_add_flag(wake_overlay, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
     wakeScreen();
+}
+
+void enterLightSleep()
+{
+    Serial.println("Entering light sleep");
+    Serial.flush();
+
+    instance.lightSleep(static_cast<WakeupSource_t>(
+        WAKEUP_SRC_POWER_KEY | WAKEUP_SRC_TOUCH_PANEL));
+
+    const bool woke_by_touch =
+        esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT1 &&
+        (esp_sleep_get_ext1_wakeup_status() & (1ULL << TP_INT)) != 0;
+
+    // Keep the overlay in place for a touch wake so the same physical touch
+    // cannot activate the SET button or another control after resume.
+    wakeScreen(woke_by_touch);
+    Serial.printf("Light sleep wake: %s\n",
+                  woke_by_touch ? "touch" : "power button");
 }
 
 void deviceEventCallback(DeviceEvent_t event, void *params, void *)
@@ -629,6 +660,10 @@ void loop()
 
     if (screen_on && millis() - last_activity_ms >= currentScreenTimeout()) {
         turnScreenOff();
+    }
+
+    if (!screen_on && millis() - screen_off_ms >= kLightSleepDelayMs) {
+        enterLightSleep();
     }
 
     delay(screen_on ? 2 : 20);
