@@ -81,7 +81,9 @@ const char *const kFieldNames[] = {
 lv_obj_t *clock_screen;
 lv_obj_t *settings_screen;
 lv_obj_t *brightness_screen;
-lv_obj_t *time_label;
+lv_obj_t *hour_label;
+lv_obj_t *minute_label;
+lv_obj_t *second_label;
 lv_obj_t *weekday_label;
 lv_obj_t *date_label;
 lv_obj_t *battery_label;
@@ -298,7 +300,9 @@ lv_obj_t *createButton(lv_obj_t *parent, const char *text,
 
 void showClockError(const char *message)
 {
-    lv_label_set_text(time_label, "--:--:--");
+    lv_label_set_text(hour_label, "--");
+    lv_label_set_text(minute_label, "--");
+    lv_label_set_text(second_label, "--");
     lv_label_set_text(weekday_label, "CLOCK ERROR");
     lv_label_set_text(date_label, message);
 }
@@ -326,8 +330,9 @@ void updateClock(lv_timer_t *)
     }
     last_second = timeinfo.tm_sec;
 
-    lv_label_set_text_fmt(time_label, "%02d:%02d:%02d",
-                          timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+    lv_label_set_text_fmt(hour_label, "%02d", timeinfo.tm_hour);
+    lv_label_set_text_fmt(minute_label, "%02d", timeinfo.tm_min);
+    lv_label_set_text_fmt(second_label, "%02d", timeinfo.tm_sec);
     lv_label_set_text(weekday_label, kWeekdays[timeinfo.tm_wday]);
     lv_label_set_text_fmt(date_label, "%s %02d, %04d",
                           kMonths[timeinfo.tm_mon], timeinfo.tm_mday,
@@ -855,6 +860,18 @@ void clockScreenEventCallback(lv_event_t *event)
     }
 }
 
+lv_obj_t *createClockTimeLabel(const char *text, int x_offset, int width)
+{
+    lv_obj_t *label = lv_label_create(clock_screen);
+    lv_label_set_text(label, text);
+    lv_obj_set_width(label, width);
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_40, 0);
+    lv_obj_set_style_text_color(label, lv_color_hex(kPrimaryColor), 0);
+    lv_obj_align(label, LV_ALIGN_CENTER, x_offset, -20);
+    return label;
+}
+
 void createClockScreen()
 {
     clock_screen = lv_screen_active();
@@ -863,12 +880,6 @@ void createClockScreen()
                         LV_EVENT_PRESSED, nullptr);
     lv_obj_add_event_cb(clock_screen, clockScreenEventCallback,
                         LV_EVENT_SCREEN_LOADED, nullptr);
-
-    lv_obj_t *title_label = lv_label_create(clock_screen);
-    lv_label_set_text(title_label, "T-WATCH S3");
-    lv_obj_set_style_text_font(title_label, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(title_label, lv_color_hex(kAccentColor), 0);
-    lv_obj_align(title_label, LV_ALIGN_TOP_LEFT, 18, 24);
 
     createButton(clock_screen, "BRI", 126, 14, 44, 30,
                  showBrightnessScreen);
@@ -881,11 +892,11 @@ void createClockScreen()
     lv_obj_set_style_text_color(time_sync_label, lv_color_hex(kMutedColor), 0);
     lv_obj_align(time_sync_label, LV_ALIGN_TOP_LEFT, 18, 46);
 
-    time_label = lv_label_create(clock_screen);
-    lv_label_set_text(time_label, "--:--:--");
-    lv_obj_set_style_text_font(time_label, &lv_font_montserrat_40, 0);
-    lv_obj_set_style_text_color(time_label, lv_color_hex(kPrimaryColor), 0);
-    lv_obj_align(time_label, LV_ALIGN_CENTER, 0, -20);
+    hour_label = createClockTimeLabel("--", -72, 60);
+    createClockTimeLabel(":", -36, 12);
+    minute_label = createClockTimeLabel("--", 0, 60);
+    createClockTimeLabel(":", 36, 12);
+    second_label = createClockTimeLabel("--", 72, 60);
 
     weekday_label = lv_label_create(clock_screen);
     lv_obj_set_style_text_font(weekday_label, &lv_font_montserrat_20, 0);
