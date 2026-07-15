@@ -14,8 +14,10 @@ constexpr uint32_t kPrimaryColor = 0xF2F5F7;
 constexpr uint32_t kAccentColor = 0x55C2FF;
 constexpr uint32_t kMutedColor = 0x94A3AD;
 constexpr uint32_t kButtonColor = 0x24323D;
+constexpr uint32_t kLowBatteryColor = 0xFF6B6B;
 constexpr uint32_t kClockScreenTimeoutMs = 15 * 1000;
 constexpr uint32_t kSettingsScreenTimeoutMs = 60 * 1000;
+constexpr uint32_t kBatteryUpdateIntervalMs = 10 * 1000;
 constexpr uint8_t kActiveBrightness = 180;
 constexpr int kMinimumYear = 2000;
 constexpr int kMaximumYear = 2099;
@@ -49,6 +51,7 @@ lv_obj_t *settings_screen;
 lv_obj_t *time_label;
 lv_obj_t *weekday_label;
 lv_obj_t *date_label;
+lv_obj_t *battery_label;
 lv_obj_t *settings_status_label;
 lv_obj_t *wake_overlay;
 lv_obj_t *field_buttons[static_cast<uint8_t>(SettingField::Count)];
@@ -66,6 +69,7 @@ uint32_t last_activity_ms = 0;
 bool screen_on = true;
 
 void syncClockFromRtc();
+void updateBatteryStatus(lv_timer_t *);
 
 bool isValidDateTime(const struct tm &timeinfo)
 {
@@ -118,6 +122,7 @@ void wakeScreen()
     lv_obj_add_flag(wake_overlay, LV_OBJ_FLAG_HIDDEN);
     instance.setBrightness(kActiveBrightness);
     syncClockFromRtc();
+    updateBatteryStatus(nullptr);
     Serial.println("Display awake");
 }
 
@@ -143,9 +148,23 @@ void wakeOverlayCallback(lv_event_t *)
 
 void deviceEventCallback(DeviceEvent_t event, void *params, void *)
 {
-    if (event == POWER_EVENT &&
-        instance.getPMUEventType(params) == PMU_EVENT_KEY_CLICKED) {
+    if (event != POWER_EVENT) {
+        return;
+    }
+
+    const PMUEventType_t power_event = instance.getPMUEventType(params);
+    if (power_event == PMU_EVENT_KEY_CLICKED) {
         wakeScreen();
+        return;
+    }
+
+    if (power_event == PMU_EVENT_USBC_INSERT ||
+        power_event == PMU_EVENT_USBC_REMOVE ||
+        power_event == PMU_EVENT_CHARGE_STARTED ||
+        power_event == PMU_EVENT_CHARGE_FINISH ||
+        power_event == PMU_EVENT_BATTERY_INSERT ||
+        power_event == PMU_EVENT_BATTERY_REMOVE) {
+        updateBatteryStatus(nullptr);
     }
 }
 
@@ -228,6 +247,68 @@ void updateClock(lv_timer_t *)
     lv_label_set_text_fmt(date_label, "%s %02d, %04d",
                           kMonths[timeinfo.tm_mon], timeinfo.tm_mday,
                           timeinfo.tm_year + 1900);
+}
+
+const char *batterySymbol(int percent)
+{
+    if (percent >= 90) {
+        return LV_SYMBOL_BATTERY_FULL;
+    }
+    if (percent >= 65) {
+        return LV_SYMBOL_BATTERY_3;
+    }
+    if (percent >= 40) {
+        return LV_SYMBOL_BATTERY_2;
+    }
+    if (percent >= 15) {
+        return LV_SYMBOL_BATTERY_1;
+    }
+    return LV_SYMBOL_BATTERY_EMPTY;
+}
+
+void updateBatteryStatus(lv_timer_t *)
+{
+    if (!screen_on || lv_screen_active() != clock_screen) {
+        return;
+    }
+
+    if ((instance.getDeviceProbe() & HW_PMU_ONLINE) == 0) {
+        lv_label_set_text(battery_label, "BATTERY N/A");
+        lv_obj_set_style_text_color(battery_label, lv_color_hex(kMutedColor), 0);
+        return;
+    }
+
+    const int percent = instance.pmu.getBatteryPercent();
+    const bool battery_connected = instance.pmu.isBatteryConnect();
+    const bool usb_connected = instance.pmu.isVbusIn();
+    const bool charging = instance.pmu.isCharging();
+
+    if (!battery_connected || percent < 0 || percent > 100) {
+        lv_label_set_text(battery_label,
+                          usb_connected ? LV_SYMBOL_USB " USB POWER"
+                                        : "BATTERY N/A");
+        lv_obj_set_style_text_color(battery_label, lv_color_hex(kMutedColor), 0);
+        return;
+    }
+
+    if (charging) {
+        lv_label_set_text_fmt(battery_label, LV_SYMBOL_CHARGE " %d%% CHARGING",
+                              percent);
+        lv_obj_set_style_text_color(battery_label, lv_color_hex(kAccentColor), 0);
+    } else if (usb_connected && percent >= 100) {
+        lv_label_set_text_fmt(battery_label,
+                              LV_SYMBOL_BATTERY_FULL " %d%% FULL", percent);
+        lv_obj_set_style_text_color(battery_label, lv_color_hex(kAccentColor), 0);
+    } else if (usb_connected) {
+        lv_label_set_text_fmt(battery_label, LV_SYMBOL_USB " %d%% POWERED",
+                              percent);
+        lv_obj_set_style_text_color(battery_label, lv_color_hex(kMutedColor), 0);
+    } else {
+        lv_label_set_text_fmt(battery_label, "%s %d%%",
+                              batterySymbol(percent), percent);
+        const uint32_t color = percent < 20 ? kLowBatteryColor : kMutedColor;
+        lv_obj_set_style_text_color(battery_label, lv_color_hex(color), 0);
+    }
 }
 
 void syncClockFromRtc()
@@ -382,6 +463,7 @@ void clockScreenEventCallback(lv_event_t *event)
 {
     if (lv_event_get_code(event) == LV_EVENT_SCREEN_LOADED) {
         syncClockFromRtc();
+        updateBatteryStatus(nullptr);
     }
 }
 
@@ -418,6 +500,12 @@ void createClockScreen()
     lv_obj_set_style_text_font(date_label, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(date_label, lv_color_hex(kMutedColor), 0);
     lv_obj_align(date_label, LV_ALIGN_CENTER, 0, 62);
+
+    battery_label = lv_label_create(clock_screen);
+    lv_label_set_text(battery_label, "BATTERY N/A");
+    lv_obj_set_style_text_font(battery_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(battery_label, lv_color_hex(kMutedColor), 0);
+    lv_obj_align(battery_label, LV_ALIGN_BOTTOM_MID, 0, -14);
 }
 
 void createFieldButton(SettingField field, int x, int y, int width)
@@ -525,7 +613,9 @@ void setup()
     createSettingsScreen();
     createWakeOverlay();
     syncClockFromRtc();
+    updateBatteryStatus(nullptr);
     lv_timer_create(updateClock, 250, nullptr);
+    lv_timer_create(updateBatteryStatus, kBatteryUpdateIntervalMs, nullptr);
 
     instance.onEvent(deviceEventCallback, POWER_EVENT, nullptr);
     last_activity_ms = millis();
