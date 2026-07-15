@@ -34,6 +34,8 @@ constexpr uint32_t kBatteryUpdateIntervalMs = 10 * 1000;
 constexpr uint32_t kWiFiConnectTimeoutMs = 10 * 1000;
 constexpr uint32_t kNtpSyncTimeoutMs = 15 * 1000;
 constexpr uint32_t kWiFiRetryIntervalMs = 15 * 60 * 1000;
+constexpr uint32_t kSuccessNotificationMs = 3 * 1000;
+constexpr uint32_t kWarningNotificationMs = 8 * 1000;
 constexpr time_t kNtpSyncIntervalSeconds = 24 * 60 * 60;
 constexpr time_t kMinimumValidEpoch = 1577836800;  // 2020-01-01 UTC
 constexpr uint8_t kDefaultBrightness = 180;
@@ -113,8 +115,10 @@ TimeSyncState time_sync_state = TimeSyncState::Idle;
 size_t wifi_credential_index = 0;
 uint32_t time_sync_state_started_ms = 0;
 uint32_t wifi_retry_not_before_ms = 0;
+uint32_t time_sync_notification_hide_ms = 0;
 time_t last_ntp_sync_epoch = 0;
 volatile bool ntp_sync_received = false;
+bool ntp_config_warning_shown = false;
 
 void syncClockFromRtc();
 void updateBatteryStatus(lv_timer_t *);
@@ -363,7 +367,7 @@ void updateBatteryStatus(lv_timer_t *)
     }
 
     if ((instance.getDeviceProbe() & HW_PMU_ONLINE) == 0) {
-        lv_label_set_text(battery_label, "BATTERY N/A");
+        lv_label_set_text(battery_label, "N/A");
         lv_obj_set_style_text_color(battery_label, lv_color_hex(kMutedColor), 0);
         return;
     }
@@ -375,23 +379,20 @@ void updateBatteryStatus(lv_timer_t *)
 
     if (!battery_connected || percent < 0 || percent > 100) {
         lv_label_set_text(battery_label,
-                          usb_connected ? LV_SYMBOL_USB " USB POWER"
-                                        : "BATTERY N/A");
+                          usb_connected ? LV_SYMBOL_USB : "N/A");
         lv_obj_set_style_text_color(battery_label, lv_color_hex(kMutedColor), 0);
         return;
     }
 
     if (charging) {
-        lv_label_set_text_fmt(battery_label, LV_SYMBOL_CHARGE " %d%% CHARGING",
-                              percent);
+        lv_label_set_text_fmt(battery_label, LV_SYMBOL_CHARGE " %d%%", percent);
         lv_obj_set_style_text_color(battery_label, lv_color_hex(kAccentColor), 0);
     } else if (usb_connected && percent >= 100) {
         lv_label_set_text_fmt(battery_label,
-                              LV_SYMBOL_BATTERY_FULL " %d%% FULL", percent);
+                              LV_SYMBOL_BATTERY_FULL " %d%%", percent);
         lv_obj_set_style_text_color(battery_label, lv_color_hex(kAccentColor), 0);
     } else if (usb_connected) {
-        lv_label_set_text_fmt(battery_label, LV_SYMBOL_USB " %d%% POWERED",
-                              percent);
+        lv_label_set_text_fmt(battery_label, LV_SYMBOL_USB " %d%%", percent);
         lv_obj_set_style_text_color(battery_label, lv_color_hex(kMutedColor), 0);
     } else {
         lv_label_set_text_fmt(battery_label, "%s %d%%",
@@ -401,13 +402,34 @@ void updateBatteryStatus(lv_timer_t *)
     }
 }
 
-void setTimeSyncStatus(const char *status, uint32_t color = kMutedColor)
+void hideTimeSyncNotification()
+{
+    if (time_sync_label == nullptr) {
+        return;
+    }
+    time_sync_notification_hide_ms = 0;
+    lv_obj_add_flag(time_sync_label, LV_OBJ_FLAG_HIDDEN);
+}
+
+void setTimeSyncStatus(const char *status, uint32_t color = kMutedColor,
+                       uint32_t duration_ms = 0)
 {
     if (time_sync_label == nullptr) {
         return;
     }
     lv_label_set_text(time_sync_label, status);
     lv_obj_set_style_text_color(time_sync_label, lv_color_hex(color), 0);
+    lv_obj_remove_flag(time_sync_label, LV_OBJ_FLAG_HIDDEN);
+    time_sync_notification_hide_ms =
+        duration_ms == 0 ? 0 : millis() + duration_ms;
+}
+
+void updateTimeSyncNotification()
+{
+    if (time_sync_notification_hide_ms != 0 &&
+        static_cast<int32_t>(millis() - time_sync_notification_hide_ms) >= 0) {
+        hideTimeSyncNotification();
+    }
 }
 
 bool isTimeSyncBusy()
@@ -509,11 +531,12 @@ bool startCurrentWiFiNetwork()
                        credential.password == nullptr ? "" : credential.password);
             time_sync_state = TimeSyncState::Connecting;
             time_sync_state_started_ms = millis();
-            lv_label_set_text_fmt(time_sync_label, "WIFI %u/%u",
-                                  static_cast<unsigned>(wifi_credential_index + 1),
-                                  static_cast<unsigned>(kWiFiCredentialCount));
-            lv_obj_set_style_text_color(time_sync_label,
-                                        lv_color_hex(kAccentColor), 0);
+            char notification[32];
+            snprintf(notification, sizeof(notification),
+                     "CONNECTING WIFI %u/%u",
+                     static_cast<unsigned>(wifi_credential_index + 1),
+                     static_cast<unsigned>(kWiFiCredentialCount));
+            setTimeSyncStatus(notification, kAccentColor);
             Serial.printf("Connecting to Wi-Fi network %u of %u\n",
                           static_cast<unsigned>(wifi_credential_index + 1),
                           static_cast<unsigned>(kWiFiCredentialCount));
@@ -529,7 +552,8 @@ void failTimeSync(const char *reason)
     Serial.printf("Time sync failed: %s\n", reason);
     stopTimeSyncRadio();
     wifi_retry_not_before_ms = millis() + kWiFiRetryIntervalMs;
-    setTimeSyncStatus("NTP RETRY LATER", kLowBatteryColor);
+    setTimeSyncStatus("NTP SYNC FAILED", kLowBatteryColor,
+                      kWarningNotificationMs);
 }
 
 void requestTimeSyncIfDue()
@@ -538,11 +562,15 @@ void requestTimeSyncIfDue()
         return;
     }
     if (kWiFiCredentialCount == 0) {
-        setTimeSyncStatus("NTP NOT CONFIGURED");
+        if (!ntp_config_warning_shown) {
+            ntp_config_warning_shown = true;
+            setTimeSyncStatus("NTP NOT CONFIGURED", kMutedColor,
+                              kWarningNotificationMs);
+        }
         return;
     }
     if (!isNtpSyncDue()) {
-        setTimeSyncStatus("NTP CURRENT");
+        hideTimeSyncNotification();
         return;
     }
     if (wifi_retry_not_before_ms != 0 &&
@@ -575,7 +603,8 @@ void completeNtpSync()
     saveLastNtpSync();
     stopTimeSyncRadio();
     syncClockFromRtc();
-    setTimeSyncStatus("NTP SYNCED", kAccentColor);
+    setTimeSyncStatus("TIME SYNCED", kAccentColor,
+                      kSuccessNotificationMs);
     Serial.println("NTP time written to RTC");
 }
 
@@ -591,7 +620,7 @@ void processTimeSync()
             ntp_sync_received = false;
             time_sync_state = TimeSyncState::WaitingForNtp;
             time_sync_state_started_ms = millis();
-            setTimeSyncStatus("NTP SYNCING", kAccentColor);
+            setTimeSyncStatus("SYNCING TIME", kAccentColor);
             configTzTime(kTimeZone, kNtpServer1, kNtpServer2, kNtpServer3);
             return;
         }
@@ -886,11 +915,11 @@ void createClockScreen()
     createButton(clock_screen, "SET", 176, 14, 50, 30,
                  showSettingsScreen);
 
-    time_sync_label = lv_label_create(clock_screen);
-    lv_label_set_text(time_sync_label, "NTP CHECK");
-    lv_obj_set_style_text_font(time_sync_label, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(time_sync_label, lv_color_hex(kMutedColor), 0);
-    lv_obj_align(time_sync_label, LV_ALIGN_TOP_LEFT, 18, 46);
+    battery_label = lv_label_create(clock_screen);
+    lv_label_set_text(battery_label, "N/A");
+    lv_obj_set_style_text_font(battery_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(battery_label, lv_color_hex(kMutedColor), 0);
+    lv_obj_align(battery_label, LV_ALIGN_TOP_LEFT, 18, 24);
 
     hour_label = createClockTimeLabel("--", -72, 60);
     createClockTimeLabel(":", -36, 12);
@@ -908,11 +937,12 @@ void createClockScreen()
     lv_obj_set_style_text_color(date_label, lv_color_hex(kMutedColor), 0);
     lv_obj_align(date_label, LV_ALIGN_CENTER, 0, 62);
 
-    battery_label = lv_label_create(clock_screen);
-    lv_label_set_text(battery_label, "BATTERY N/A");
-    lv_obj_set_style_text_font(battery_label, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(battery_label, lv_color_hex(kMutedColor), 0);
-    lv_obj_align(battery_label, LV_ALIGN_BOTTOM_MID, 0, -14);
+    time_sync_label = lv_label_create(clock_screen);
+    lv_label_set_text(time_sync_label, "");
+    lv_obj_set_style_text_font(time_sync_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(time_sync_label, lv_color_hex(kMutedColor), 0);
+    lv_obj_align(time_sync_label, LV_ALIGN_BOTTOM_MID, 0, -14);
+    lv_obj_add_flag(time_sync_label, LV_OBJ_FLAG_HIDDEN);
 }
 
 void createFieldButton(SettingField field, int x, int y, int width)
@@ -1107,6 +1137,7 @@ void loop()
     instance.loop();
     lv_timer_handler();
     processTimeSync();
+    updateTimeSyncNotification();
 
     if (screen_on && millis() - last_activity_ms >= currentScreenTimeout()) {
         turnScreenOff();

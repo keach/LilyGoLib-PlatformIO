@@ -117,6 +117,7 @@ pio run -e twatchs3_custom -t upload --upload-port /dev/cu.usbmodemXXXXXX
 - A touch or a short power-button press wakes the watch.
 - The wake touch is consumed so it does not accidentally activate a control.
 - RTC time and battery state are refreshed after wake.
+- A compact battery or power status remains visible at the upper left.
 
 ### Wi-Fi and NTP behavior
 
@@ -130,8 +131,10 @@ pio run -e twatchs3_custom -t upload --upload-port /dev/cu.usbmodemXXXXXX
   display wake.
 - A successful NTP result is written to the hardware RTC, persisted to NVS,
   and followed by Wi-Fi shutdown to reduce power consumption.
-- The clock screen reports states such as `WIFI 1/2`, `NTP SYNCING`,
-  `NTP SYNCED`, and `NTP CURRENT`.
+- Wi-Fi and NTP activity appears as a bottom notification, such as
+  `CONNECTING WIFI 1/2`, `SYNCING TIME`, or `TIME SYNCED`.
+- Success notifications disappear after 3 seconds; failure and configuration
+  warnings disappear after 8 seconds. A current NTP state produces no notice.
 
 ### Security notes
 
@@ -253,6 +256,7 @@ pio run -e twatchs3_custom -t upload --upload-port /dev/cu.usbmodemXXXXXX
 - タッチまたは電源ボタンの短押しで復帰します。
 - 復帰に使ったタッチは吸収され、背後のボタンを誤操作しません。
 - 復帰時にRTC時刻とバッテリー状態を更新します。
+- 左上には簡潔なバッテリー・給電状態を常時表示します。
 
 ### Wi-Fi・NTP動作
 
@@ -264,8 +268,10 @@ pio run -e twatchs3_custom -t upload --upload-port /dev/cu.usbmodemXXXXXX
 - Wi-Fi接続後、NTPの応答を15秒待ちます。
 - 全候補が失敗した場合は15分間再試行を抑制し、その後の画面復帰時に再試行します。
 - NTP同期成功後はハードウェアRTCとNVSを更新し、省電力のためWi-Fiを停止します。
-- 時計画面には`WIFI 1/2`、`NTP SYNCING`、`NTP SYNCED`、
-  `NTP CURRENT`などの状態を表示します。
+- Wi-Fi・NTPの動作は下段へ`CONNECTING WIFI 1/2`、`SYNCING TIME`、
+  `TIME SYNCED`などの通知として表示します。
+- 成功通知は3秒、失敗・未設定通知は8秒で消えます。NTPが最新の定常状態では
+  通知を表示しません。
 
 ### セキュリティ上の注意
 
