@@ -24,24 +24,35 @@ UTC+9).
 | Clock face | Implemented and build-tested | Fixed-position `HH:MM:SS`, English weekday/date, and stable per-field centering |
 | RTC | Implemented and device-tested | RTC refresh whenever the clock face appears and a separate manual date/time screen |
 | Display timeout | Implemented and device-tested | 15-second clock timeout, 60-second settings timeout, and guarded touch wake |
-| Light Sleep | Implemented and build-tested | Sleep 5 seconds after display-off; wake by touch or power button; latest device verification pending |
-| Battery status | Core behavior device-tested; layout build-tested | Compact always-visible upper-left battery, charging, USB-power, and low-battery state; latest layout verification pending |
-| Wi-Fi and NTP | Implemented and build-tested | Multiple fixed networks, 24-hour persistent interval, RTC update, radio shutdown, and bottom notifications; device verification pending |
-| Brightness setting | Implemented and build-tested | Separate live-preview screen with `SAVE`/`CANCEL` and NVS persistence; device verification pending |
+| Light Sleep | Implemented and device-tested | Sleep 5 seconds after display-off and wake by touch or power button |
+| Battery status | Implemented and device-tested | Compact always-visible upper-left battery, charging, USB-power, and low-battery state |
+| Wi-Fi and NTP | Implemented; basic connection device-tested | A configured 2.4 GHz network connects on the device. Multi-network fallback, NTP persistence, and radio shutdown still need explicit verification |
+| Brightness setting | Implemented and device-tested | Separate live-preview screen with `SAVE`/`CANCEL` and NVS persistence |
 | Documentation | Implemented | Project-specific English and Japanese README |
 
 ### Roadmap
 
 #### Verify the current firmware on the device
 
-- [ ] Create the Git-ignored `include/wifi_credentials.h` with real networks.
-- [ ] Deploy the current `t-watch-s3-custom` HEAD to the watch.
-- [ ] Verify touch/power wake after Light Sleep.
+- [x] Create the Git-ignored `include/wifi_credentials.h` with real networks.
+- [x] Deploy the current `t-watch-s3-custom` HEAD to the watch.
+- [x] Verify connection to a configured 2.4 GHz Wi-Fi network.
+- [x] Verify touch/power wake after Light Sleep.
 - [ ] Verify multi-network Wi-Fi selection, NTP-to-RTC synchronization, and
   Wi-Fi shutdown.
-- [ ] Verify brightness persistence after reboot.
-- [ ] Verify the fixed clock layout, upper-left battery status, and timed
-  bottom notifications.
+- [x] Verify brightness persistence after reboot.
+- [x] Verify the upper-left battery status.
+- [ ] Verify the fixed clock layout and timed bottom notifications.
+
+#### Next milestone: settings and synchronization
+
+- [ ] Add a settings hub for navigating independent settings screens.
+- [ ] Group the existing date/time and brightness screens under the settings
+  hub.
+- [ ] Add a time synchronization screen with `SYNC NOW`, automatic sync
+  enable/disable, and the last synchronization result and time.
+- [ ] Retry a failed Wi-Fi/NTP operation after 15 minutes without requiring a
+  display wake.
 
 #### Planned persistent settings
 
@@ -58,7 +69,7 @@ These are possible extensions and are not yet committed requirements.
 
 - Japanese UI or selectable display language
 - Selectable timezone instead of fixed JST
-- A settings hub for navigating additional independent settings screens
+- Alarm, timer, and stopwatch functions
 
 ### PlatformIO environments
 
@@ -101,6 +112,10 @@ Add or remove entries as needed, then keep `kWiFiCredentialCount` as shown in
 the example file. The real credentials file is excluded from Git. When it is
 absent, the firmware still builds and operates with Wi-Fi/NTP disabled.
 
+The ESP32-S3 supports 2.4 GHz Wi-Fi only. Configure a 2.4 GHz network or a
+dual-band SSID that is also available on 2.4 GHz; a 5 GHz-only SSID cannot be
+used.
+
 ### Build
 
 Build the custom firmware:
@@ -134,6 +149,9 @@ If automatic port detection is unavailable, specify the port explicitly:
 ```sh
 pio run -e twatchs3_custom -t upload --upload-port /dev/cu.usbmodemXXXXXX
 ```
+
+If upload reports `No serial data received` while the installed firmware is in
+Light Sleep, wake the display and run the upload command again.
 
 ### Clock and power behavior
 
@@ -192,22 +210,32 @@ pio run -e twatchs3_custom -t upload --upload-port /dev/cu.usbmodemXXXXXX
 | 時計画面 | 実装・ビルド確認済み | 位置を固定した`HH:MM:SS`、英語の曜日・日付、時・分・秒ごとの中央揃え |
 | RTC | 実装・実機確認済み | 時計画面表示時のRTC再読込と、独立した日付・時刻手動設定画面 |
 | 画面消灯 | 実装・実機確認済み | 時計15秒、設定60秒のタイムアウトと、誤操作を防ぐタッチ復帰 |
-| Light Sleep | 実装・ビルド確認済み | 消灯5秒後に移行し、タッチまたは電源ボタンで復帰。最新版の実機確認は未実施 |
-| バッテリー状態 | 基本動作は実機確認済み、配置はビルド確認済み | 左上に常時表示する簡潔な残量、充電、USB給電、低残量表示。最新配置の実機確認は未実施 |
-| Wi-Fi・NTP | 実装・ビルド確認済み | 複数固定ネットワーク、24時間間隔の永続化、RTC更新、Wi-Fi停止、下段通知。実機確認は未実施 |
-| 明るさ設定 | 実装・ビルド確認済み | 即時プレビュー、`SAVE`/`CANCEL`、NVS永続化を備えた独立画面。実機確認は未実施 |
+| Light Sleep | 実装・実機確認済み | 消灯5秒後に移行し、タッチまたは電源ボタンで復帰 |
+| バッテリー状態 | 実装・実機確認済み | 左上に常時表示する簡潔な残量、充電、USB給電、低残量表示 |
+| Wi-Fi・NTP | 実装済み、基本接続は実機確認済み | 設定した2.4 GHzネットワークへの接続を実機確認済み。複数ネットワークの切り替え、NTP履歴の永続化、Wi-Fi停止は明示的な確認が必要 |
+| 明るさ設定 | 実装・実機確認済み | 即時プレビュー、`SAVE`/`CANCEL`、NVS永続化を備えた独立画面 |
 | ドキュメント | 実装済み | このプロジェクト専用の英語・日本語README |
 
 ### ロードマップ
 
 #### 現行ファームウェアの実機確認
 
-- [ ] Git管理外の`include/wifi_credentials.h`へ実際のネットワークを設定する。
-- [ ] 現在の`t-watch-s3-custom` HEADを実機へデプロイする。
-- [ ] Light Sleep後のタッチ・電源ボタン復帰を確認する。
+- [x] Git管理外の`include/wifi_credentials.h`へ実際のネットワークを設定する。
+- [x] 現在の`t-watch-s3-custom` HEADを実機へデプロイする。
+- [x] 設定した2.4 GHz Wi-Fiネットワークへの接続を確認する。
+- [x] Light Sleep後のタッチ・電源ボタン復帰を確認する。
 - [ ] 複数Wi-Fiの選択、NTPからRTCへの同期、同期後のWi-Fi停止を確認する。
-- [ ] 再起動後も明るさ設定が保持されることを確認する。
-- [ ] 固定幅の時計表示、左上のバッテリー状態、時間制御された下段通知を確認する。
+- [x] 再起動後も明るさ設定が保持されることを確認する。
+- [x] 左上のバッテリー状態を確認する。
+- [ ] 固定幅の時計表示と時間制御された下段通知を確認する。
+
+#### 次のマイルストーン：設定と時刻同期
+
+- [ ] 独立した設定画面へ移動するための設定ハブを追加する。
+- [ ] 既存の日付・時刻設定と明るさ設定を設定ハブへまとめる。
+- [ ] `SYNC NOW`、自動同期の有効・無効、最終同期結果・時刻を備えた
+  時刻同期設定画面を追加する。
+- [ ] Wi-Fi・NTP失敗から15分後、画面復帰を必要とせず再試行する。
 
 #### 実装予定の設定永続化
 
@@ -224,7 +252,7 @@ pio run -e twatchs3_custom -t upload --upload-port /dev/cu.usbmodemXXXXXX
 
 - 日本語UIまたは表示言語の選択
 - JST固定ではなくタイムゾーンを選択する設定
-- 独立した設定画面が増えた場合に使用する設定ハブ
+- アラーム、タイマー、ストップウォッチ
 
 ### PlatformIO環境
 
@@ -267,6 +295,9 @@ inline constexpr WiFiCredential kWiFiCredentials[] = {
 計算式のまま使用してください。実際の認証情報ファイルはGit管理から除外されます。
 ファイルが存在しない場合もビルドでき、Wi-Fi・NTP同期なしで時計が動作します。
 
+ESP32-S3が対応するWi-Fiは2.4 GHz帯のみです。2.4 GHzのネットワーク、または
+2.4 GHzでも提供される共通SSIDを設定してください。5 GHz専用SSIDには接続できません。
+
 ### ビルド
 
 カスタムファームウェアをビルドします。
@@ -300,6 +331,10 @@ pio run -e twatchs3_custom -t upload
 ```sh
 pio run -e twatchs3_custom -t upload --upload-port /dev/cu.usbmodemXXXXXX
 ```
+
+インストール済みファームウェアがLight Sleep中で、書き込み時に
+`No serial data received`と表示された場合は、画面を復帰させてから書き込み
+コマンドを再実行してください。
 
 ### 時計・省電力動作
 
