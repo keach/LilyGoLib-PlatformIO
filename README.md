@@ -16,20 +16,49 @@ can be developed without overwriting the factory application sources.
 The current custom firmware uses English labels and Japan Standard Time (JST,
 UTC+9).
 
-### Current features
+### Implementation status
 
-- Clock display with hours, minutes, and seconds
-- English weekday and date display
-- RTC synchronization whenever the clock screen is shown
-- Manual date and time settings screen
-- Separate display brightness screen with persistent NVS storage
-- Automatic display timeout
-- Light Sleep after the display turns off
-- Wake by touch panel or power button
-- Battery percentage, charging, full, USB-powered, and low-battery states
-- Multiple fixed Wi-Fi network registrations
-- NTP synchronization with a persistent 24-hour interval
-- Automatic Wi-Fi shutdown after time synchronization
+| Area | Status | Details |
+| --- | --- | --- |
+| Build foundation | Implemented and build-tested | Pinned Arduino-ESP32 3.3.8 toolchain and separate factory/custom PlatformIO environments |
+| Clock face | Implemented and build-tested | Fixed-position `HH:MM:SS`, English weekday/date, and stable per-field centering |
+| RTC | Implemented and device-tested | RTC refresh whenever the clock face appears and a separate manual date/time screen |
+| Display timeout | Implemented and device-tested | 15-second clock timeout, 60-second settings timeout, and guarded touch wake |
+| Light Sleep | Implemented and build-tested | Sleep 5 seconds after display-off; wake by touch or power button; latest device verification pending |
+| Battery status | Core behavior device-tested; layout build-tested | Compact always-visible upper-left battery, charging, USB-power, and low-battery state; latest layout verification pending |
+| Wi-Fi and NTP | Implemented and build-tested | Multiple fixed networks, 24-hour persistent interval, RTC update, radio shutdown, and bottom notifications; device verification pending |
+| Brightness setting | Implemented and build-tested | Separate live-preview screen with `SAVE`/`CANCEL` and NVS persistence; device verification pending |
+| Documentation | Implemented | Project-specific English and Japanese README |
+
+### Roadmap
+
+#### Verify the current firmware on the device
+
+- [ ] Create the Git-ignored `include/wifi_credentials.h` with real networks.
+- [ ] Deploy the current `t-watch-s3-custom` HEAD to the watch.
+- [ ] Verify touch/power wake after Light Sleep.
+- [ ] Verify multi-network Wi-Fi selection, NTP-to-RTC synchronization, and
+  Wi-Fi shutdown.
+- [ ] Verify brightness persistence after reboot.
+- [ ] Verify the fixed clock layout, upper-left battery status, and timed
+  bottom notifications.
+
+#### Planned persistent settings
+
+- [ ] Configurable clock-screen timeout
+- [ ] Configurable settings-screen timeout
+- [ ] Configurable delay before Light Sleep
+- [ ] Automatic NTP synchronization enable/disable
+- [ ] 12-hour/24-hour clock selection
+- [ ] Restore-default-settings action
+
+#### Later candidates
+
+These are possible extensions and are not yet committed requirements.
+
+- Japanese UI or selectable display language
+- Selectable timezone instead of fixed JST
+- A settings hub for navigating additional independent settings screens
 
 ### PlatformIO environments
 
@@ -155,20 +184,47 @@ pio run -e twatchs3_custom -t upload --upload-port /dev/cu.usbmodemXXXXXX
 
 現在のカスタムファームウェアは英語表示で、日本標準時（JST、UTC+9）を使用します。
 
-### 現在の機能
+### 実装状況
 
-- 時・分・秒を表示する時計画面
-- 英語の曜日・日付表示
-- 時計画面が表示されるたびにRTCと同期
-- 日付と時刻の手動設定画面
-- NVSへ設定を保存する独立した画面明るさ設定
-- 画面の自動消灯
-- 消灯後のLight Sleep
-- タッチパネルまたは電源ボタンによる復帰
-- バッテリー残量、充電中、満充電、USB給電、残量低下の表示
-- 複数の固定Wi-Fiネットワーク登録
-- 前回同期時刻を保持する24時間間隔のNTP同期
-- 時刻同期後のWi-Fi自動停止
+| 領域 | 状況 | 内容 |
+| --- | --- | --- |
+| ビルド基盤 | 実装・ビルド確認済み | Arduino-ESP32 3.3.8の固定と、factory/customを分離したPlatformIO環境 |
+| 時計画面 | 実装・ビルド確認済み | 位置を固定した`HH:MM:SS`、英語の曜日・日付、時・分・秒ごとの中央揃え |
+| RTC | 実装・実機確認済み | 時計画面表示時のRTC再読込と、独立した日付・時刻手動設定画面 |
+| 画面消灯 | 実装・実機確認済み | 時計15秒、設定60秒のタイムアウトと、誤操作を防ぐタッチ復帰 |
+| Light Sleep | 実装・ビルド確認済み | 消灯5秒後に移行し、タッチまたは電源ボタンで復帰。最新版の実機確認は未実施 |
+| バッテリー状態 | 基本動作は実機確認済み、配置はビルド確認済み | 左上に常時表示する簡潔な残量、充電、USB給電、低残量表示。最新配置の実機確認は未実施 |
+| Wi-Fi・NTP | 実装・ビルド確認済み | 複数固定ネットワーク、24時間間隔の永続化、RTC更新、Wi-Fi停止、下段通知。実機確認は未実施 |
+| 明るさ設定 | 実装・ビルド確認済み | 即時プレビュー、`SAVE`/`CANCEL`、NVS永続化を備えた独立画面。実機確認は未実施 |
+| ドキュメント | 実装済み | このプロジェクト専用の英語・日本語README |
+
+### ロードマップ
+
+#### 現行ファームウェアの実機確認
+
+- [ ] Git管理外の`include/wifi_credentials.h`へ実際のネットワークを設定する。
+- [ ] 現在の`t-watch-s3-custom` HEADを実機へデプロイする。
+- [ ] Light Sleep後のタッチ・電源ボタン復帰を確認する。
+- [ ] 複数Wi-Fiの選択、NTPからRTCへの同期、同期後のWi-Fi停止を確認する。
+- [ ] 再起動後も明るさ設定が保持されることを確認する。
+- [ ] 固定幅の時計表示、左上のバッテリー状態、時間制御された下段通知を確認する。
+
+#### 実装予定の設定永続化
+
+- [ ] 時計画面の消灯時間設定
+- [ ] 設定画面の消灯時間設定
+- [ ] Light Sleepまでの待機時間設定
+- [ ] NTP自動同期の有効・無効
+- [ ] 12時間・24時間表示の選択
+- [ ] 設定を初期値へ戻す操作
+
+#### 将来の候補
+
+以下は拡張候補であり、まだ確定要件ではありません。
+
+- 日本語UIまたは表示言語の選択
+- JST固定ではなくタイムゾーンを選択する設定
+- 独立した設定画面が増えた場合に使用する設定ハブ
 
 ### PlatformIO環境
 
