@@ -28,6 +28,7 @@ UTC+9).
 | Battery status | Implemented and device-tested | Compact always-visible upper-left battery, charging, USB-power, and low-battery state |
 | Wi-Fi and NTP | Implemented; basic connection device-tested | A configured 2.4 GHz network connects on the device. Multi-network fallback, NTP persistence, and radio shutdown still need explicit verification |
 | Brightness setting | Implemented and device-tested | Separate live-preview screen with `SAVE`/`CANCEL` and NVS persistence |
+| Settings hub | Implemented and build-tested | A single clock-screen `SET` button opens independent `DATE & TIME` and `BRIGHTNESS` screens through a central hub |
 | Documentation | Implemented | Project-specific English and Japanese README |
 
 ### Roadmap
@@ -46,8 +47,8 @@ UTC+9).
 
 #### Next milestone: settings and synchronization
 
-- [ ] Add a settings hub for navigating independent settings screens.
-- [ ] Group the existing date/time and brightness screens under the settings
+- [x] Add a settings hub for navigating independent settings screens.
+- [x] Group the existing date/time and brightness screens under the settings
   hub.
 - [ ] Add a time synchronization screen with `SYNC NOW`, automatic sync
   enable/disable, and the last synchronization result and time.
@@ -155,7 +156,9 @@ Light Sleep, wake the display and run the upload command again.
 
 ### Clock and power behavior
 
-- Use `BRI` on the clock screen to open the brightness screen.
+- Use `SET` on the clock screen to open the settings hub.
+- Select `DATE & TIME` or `BRIGHTNESS` in the hub. `SAVE` and `CANCEL` return
+  to the hub, and `BACK` returns to the clock.
 - Brightness changes are previewed immediately; `SAVE` persists the value to
   NVS and `CANCEL` restores the previous value.
 - The clock screen turns off after 15 seconds of inactivity.
@@ -214,6 +217,7 @@ Light Sleep, wake the display and run the upload command again.
 | バッテリー状態 | 実装・実機確認済み | 左上に常時表示する簡潔な残量、充電、USB給電、低残量表示 |
 | Wi-Fi・NTP | 実装済み、基本接続は実機確認済み | 設定した2.4 GHzネットワークへの接続を実機確認済み。複数ネットワークの切り替え、NTP履歴の永続化、Wi-Fi停止は明示的な確認が必要 |
 | 明るさ設定 | 実装・実機確認済み | 即時プレビュー、`SAVE`/`CANCEL`、NVS永続化を備えた独立画面 |
+| 設定ハブ | 実装・ビルド確認済み | 時計画面の単一`SET`ボタンから、中央のハブを経由して独立した`DATE & TIME`と`BRIGHTNESS`画面を開く構成 |
 | ドキュメント | 実装済み | このプロジェクト専用の英語・日本語README |
 
 ### ロードマップ
@@ -231,8 +235,8 @@ Light Sleep, wake the display and run the upload command again.
 
 #### 次のマイルストーン：設定と時刻同期
 
-- [ ] 独立した設定画面へ移動するための設定ハブを追加する。
-- [ ] 既存の日付・時刻設定と明るさ設定を設定ハブへまとめる。
+- [x] 独立した設定画面へ移動するための設定ハブを追加する。
+- [x] 既存の日付・時刻設定と明るさ設定を設定ハブへまとめる。
 - [ ] `SYNC NOW`、自動同期の有効・無効、最終同期結果・時刻を備えた
   時刻同期設定画面を追加する。
 - [ ] Wi-Fi・NTP失敗から15分後、画面復帰を必要とせず再試行する。
@@ -338,7 +342,9 @@ pio run -e twatchs3_custom -t upload --upload-port /dev/cu.usbmodemXXXXXX
 
 ### 時計・省電力動作
 
-- 時計画面の`BRI`から明るさ設定画面を開きます。
+- 時計画面の`SET`から設定ハブを開きます。
+- ハブで`DATE & TIME`または`BRIGHTNESS`を選択します。`SAVE`と`CANCEL`は
+  ハブへ戻り、`BACK`は時計画面へ戻ります。
 - 明るさは操作中に即時反映され、`SAVE`でNVSへ保存、`CANCEL`で変更前の値へ
   戻ります。
 - 時計画面は15秒間操作がないと消灯します。

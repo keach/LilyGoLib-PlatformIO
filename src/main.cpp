@@ -81,7 +81,8 @@ const char *const kFieldNames[] = {
 };
 
 lv_obj_t *clock_screen;
-lv_obj_t *settings_screen;
+lv_obj_t *settings_hub_screen;
+lv_obj_t *date_time_screen;
 lv_obj_t *brightness_screen;
 lv_obj_t *hour_label;
 lv_obj_t *minute_label;
@@ -767,6 +768,18 @@ void showClockScreen(lv_event_t *)
                         180, 0, false);
 }
 
+void showSettingsHubScreen(lv_event_t *)
+{
+    lv_screen_load_anim(settings_hub_screen, LV_SCR_LOAD_ANIM_MOVE_LEFT,
+                        180, 0, false);
+}
+
+void returnToSettingsHubScreen(lv_event_t *)
+{
+    lv_screen_load_anim(settings_hub_screen, LV_SCR_LOAD_ANIM_MOVE_RIGHT,
+                        180, 0, false);
+}
+
 void updateBrightnessControls()
 {
     lv_slider_set_value(brightness_slider, pending_brightness, LV_ANIM_OFF);
@@ -831,7 +844,7 @@ void cancelBrightnessCallback(lv_event_t *)
 {
     pending_brightness = active_brightness;
     instance.setBrightness(active_brightness);
-    showClockScreen(nullptr);
+    returnToSettingsHubScreen(nullptr);
 }
 
 void saveBrightnessCallback(lv_event_t *)
@@ -847,10 +860,10 @@ void saveBrightnessCallback(lv_event_t *)
     }
 
     Serial.printf("Brightness saved: %u\n", active_brightness);
-    showClockScreen(nullptr);
+    returnToSettingsHubScreen(nullptr);
 }
 
-void saveSettingsCallback(lv_event_t *)
+void saveDateTimeCallback(lv_event_t *)
 {
     if ((instance.getDeviceProbe() & HW_RTC_ONLINE) == 0) {
         lv_label_set_text(settings_status_label, "RTC NOT AVAILABLE");
@@ -863,10 +876,10 @@ void saveSettingsCallback(lv_event_t *)
     Serial.printf("RTC set to %04d-%02d-%02d %02d:%02d:%02d\n",
                   setting_year, setting_month, setting_day,
                   setting_hour, setting_minute, setting_second);
-    showClockScreen(nullptr);
+    returnToSettingsHubScreen(nullptr);
 }
 
-void settingsScreenEventCallback(lv_event_t *event)
+void dateTimeScreenEventCallback(lv_event_t *event)
 {
     if (lv_event_get_code(event) == LV_EVENT_SCREEN_LOAD_START) {
         last_activity_ms = millis();
@@ -874,10 +887,17 @@ void settingsScreenEventCallback(lv_event_t *event)
     }
 }
 
-void showSettingsScreen(lv_event_t *)
+void showDateTimeScreen(lv_event_t *)
 {
-    lv_screen_load_anim(settings_screen, LV_SCR_LOAD_ANIM_MOVE_LEFT,
+    lv_screen_load_anim(date_time_screen, LV_SCR_LOAD_ANIM_MOVE_LEFT,
                         180, 0, false);
+}
+
+void settingsHubScreenEventCallback(lv_event_t *event)
+{
+    if (lv_event_get_code(event) == LV_EVENT_SCREEN_LOAD_START) {
+        last_activity_ms = millis();
+    }
 }
 
 void clockScreenEventCallback(lv_event_t *event)
@@ -910,10 +930,8 @@ void createClockScreen()
     lv_obj_add_event_cb(clock_screen, clockScreenEventCallback,
                         LV_EVENT_SCREEN_LOADED, nullptr);
 
-    createButton(clock_screen, "BRI", 126, 14, 44, 30,
-                 showBrightnessScreen);
     createButton(clock_screen, "SET", 176, 14, 50, 30,
-                 showSettingsScreen);
+                 showSettingsHubScreen);
 
     battery_label = lv_label_create(clock_screen);
     lv_label_set_text(battery_label, "N/A");
@@ -948,7 +966,7 @@ void createClockScreen()
 void createFieldButton(SettingField field, int x, int y, int width)
 {
     const uint8_t index = static_cast<uint8_t>(field);
-    lv_obj_t *button = lv_button_create(settings_screen);
+    lv_obj_t *button = lv_button_create(date_time_screen);
     lv_obj_set_pos(button, x, y);
     lv_obj_set_size(button, width, 36);
     styleButton(button);
@@ -962,22 +980,51 @@ void createFieldButton(SettingField field, int x, int y, int width)
     lv_obj_center(field_labels[index]);
 }
 
-void createSettingsScreen()
+void createSettingsHubScreen()
 {
-    settings_screen = lv_obj_create(nullptr);
-    styleScreen(settings_screen);
-    lv_obj_add_event_cb(settings_screen, markUserActivity,
+    settings_hub_screen = lv_obj_create(nullptr);
+    styleScreen(settings_hub_screen);
+    lv_obj_add_event_cb(settings_hub_screen, markUserActivity,
                         LV_EVENT_PRESSED, nullptr);
-    lv_obj_add_event_cb(settings_screen, settingsScreenEventCallback,
+    lv_obj_add_event_cb(settings_hub_screen, settingsHubScreenEventCallback,
                         LV_EVENT_SCREEN_LOAD_START, nullptr);
 
-    lv_obj_t *title = lv_label_create(settings_screen);
+    lv_obj_t *title = lv_label_create(settings_hub_screen);
+    lv_label_set_text(title, "SETTINGS");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(kAccentColor), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 16);
+
+    lv_obj_t *subtitle = lv_label_create(settings_hub_screen);
+    lv_label_set_text(subtitle, "SELECT AN OPTION");
+    lv_obj_set_style_text_font(subtitle, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(subtitle, lv_color_hex(kMutedColor), 0);
+    lv_obj_align(subtitle, LV_ALIGN_TOP_MID, 0, 48);
+
+    createButton(settings_hub_screen, "DATE & TIME",
+                 20, 72, 200, 46, showDateTimeScreen);
+    createButton(settings_hub_screen, "BRIGHTNESS",
+                 20, 128, 200, 46, showBrightnessScreen);
+    createButton(settings_hub_screen, "BACK",
+                 20, 194, 200, 34, showClockScreen);
+}
+
+void createDateTimeScreen()
+{
+    date_time_screen = lv_obj_create(nullptr);
+    styleScreen(date_time_screen);
+    lv_obj_add_event_cb(date_time_screen, markUserActivity,
+                        LV_EVENT_PRESSED, nullptr);
+    lv_obj_add_event_cb(date_time_screen, dateTimeScreenEventCallback,
+                        LV_EVENT_SCREEN_LOAD_START, nullptr);
+
+    lv_obj_t *title = lv_label_create(date_time_screen);
     lv_label_set_text(title, "SET DATE & TIME");
     lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(kAccentColor), 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
 
-    lv_obj_t *date_heading = lv_label_create(settings_screen);
+    lv_obj_t *date_heading = lv_label_create(date_time_screen);
     lv_label_set_text(date_heading, "DATE");
     lv_obj_set_style_text_font(date_heading, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(date_heading, lv_color_hex(kMutedColor), 0);
@@ -987,7 +1034,7 @@ void createSettingsScreen()
     createFieldButton(SettingField::Month, 130, 36, 48);
     createFieldButton(SettingField::Day, 184, 36, 48);
 
-    lv_obj_t *time_heading = lv_label_create(settings_screen);
+    lv_obj_t *time_heading = lv_label_create(date_time_screen);
     lv_label_set_text(time_heading, "TIME");
     lv_obj_set_style_text_font(time_heading, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(time_heading, lv_color_hex(kMutedColor), 0);
@@ -997,16 +1044,16 @@ void createSettingsScreen()
     createFieldButton(SettingField::Minute, 110, 86, 48);
     createFieldButton(SettingField::Second, 172, 86, 48);
 
-    settings_status_label = lv_label_create(settings_screen);
+    settings_status_label = lv_label_create(date_time_screen);
     lv_obj_set_style_text_font(settings_status_label, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(settings_status_label,
                                 lv_color_hex(kMutedColor), 0);
     lv_obj_align(settings_status_label, LV_ALIGN_TOP_MID, 0, 132);
 
-    lv_obj_t *decrement = createButton(settings_screen, LV_SYMBOL_MINUS,
+    lv_obj_t *decrement = createButton(date_time_screen, LV_SYMBOL_MINUS,
                                        35, 151, 75, 40,
                                        decrementButtonCallback);
-    lv_obj_t *increment = createButton(settings_screen, LV_SYMBOL_PLUS,
+    lv_obj_t *increment = createButton(date_time_screen, LV_SYMBOL_PLUS,
                                        130, 151, 75, 40,
                                        incrementButtonCallback);
     lv_obj_add_event_cb(decrement, decrementButtonCallback,
@@ -1014,10 +1061,10 @@ void createSettingsScreen()
     lv_obj_add_event_cb(increment, incrementButtonCallback,
                         LV_EVENT_LONG_PRESSED_REPEAT, nullptr);
 
-    createButton(settings_screen, "CANCEL", 15, 202, 100, 30,
-                 showClockScreen);
-    lv_obj_t *save = createButton(settings_screen, "SAVE", 125, 202, 100, 30,
-                                  saveSettingsCallback);
+    createButton(date_time_screen, "CANCEL", 15, 202, 100, 30,
+                 returnToSettingsHubScreen);
+    lv_obj_t *save = createButton(date_time_screen, "SAVE", 125, 202, 100, 30,
+                                  saveDateTimeCallback);
     lv_obj_set_style_bg_color(save, lv_color_hex(kAccentColor), 0);
     lv_obj_set_style_text_color(lv_obj_get_child(save, 0),
                                 lv_color_hex(kBackgroundColor), 0);
@@ -1116,7 +1163,8 @@ void setup()
     loadBrightnessSetting();
 
     createClockScreen();
-    createSettingsScreen();
+    createSettingsHubScreen();
+    createDateTimeScreen();
     createBrightnessScreen();
     createWakeOverlay();
     syncClockFromRtc();
