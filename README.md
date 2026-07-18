@@ -177,6 +177,39 @@ Light Sleep, wake the display and run the upload command again.
 
 ### Wi-Fi and NTP behavior
 
+#### Connection and synchronization flow
+
+```mermaid
+flowchart TD
+    W0["WI-FI screen: CONNECT / RECONNECT"] --> W1["Try configured networks in priority order"]
+    W1 --> W2{"Wi-Fi connected?"}
+    W2 -- "No" --> WF["Show WI-FI: FAILED"]
+    W2 -- "Yes" --> WM["Manual connection stays active while awake"]
+
+    T0["Automatic sync or SYNC NOW"] --> T1{"Wi-Fi already connected?"}
+    T1 -- "Yes" --> TR["Reuse the existing connection"]
+    T1 -- "No" --> T2["Start a temporary Wi-Fi connection"]
+    T2 --> T3{"Wi-Fi connected?"}
+    T3 -- "No" --> TF["Report Wi-Fi connection failure"]
+    T3 -- "Yes" --> TO["Mark connection as NTP-owned"]
+
+    WM -. "Available to time sync" .-> T1
+    TR --> N0["Request NTP time and update RTC"]
+    TO --> N0
+    N0 --> N1{"Synchronization successful?"}
+    N1 -- "Yes" --> NS["Store result and last successful time"]
+    N1 -- "No" --> NF["Report NTP or RTC failure"]
+    NS --> O{"Who started Wi-Fi?"}
+    NF --> O
+    O -- "WI-FI screen" --> KEEP["Keep Wi-Fi connected"]
+    O -- "Time sync" --> STOP["Disconnect Wi-Fi immediately"]
+
+    KEEP --> K0{"Stop condition"}
+    WM --> K0
+    K0 -- "DISCONNECT" --> STOP
+    K0 -- "Light Sleep" --> STOP
+```
+
 - The `WI-FI` screen shows `OFF`, `CONNECTING`, `CONNECTED`, or `FAILED`, plus
   the connected or currently attempted SSID.
 - `CONNECT` tries the configured networks in priority order. When already
@@ -384,6 +417,39 @@ pio run -e twatchs3_custom -t upload --upload-port /dev/cu.usbmodemXXXXXX
 - 左上には簡潔なバッテリー・給電状態を常時表示します。
 
 ### Wi-Fi・NTP動作
+
+#### 接続・時刻同期フロー
+
+```mermaid
+flowchart TD
+    W0["WI-FI画面: CONNECT / RECONNECT"] --> W1["設定済みネットワークを優先順に試行"]
+    W1 --> W2{"Wi-Fi接続成功?"}
+    W2 -- "いいえ" --> WF["WI-FI: FAILEDを表示"]
+    W2 -- "はい" --> WM["手動接続を起動中は維持"]
+
+    T0["自動同期またはSYNC NOW"] --> T1{"Wi-Fi接続済み?"}
+    T1 -- "はい" --> TR["既存の接続を再利用"]
+    T1 -- "いいえ" --> T2["一時的なWi-Fi接続を開始"]
+    T2 --> T3{"Wi-Fi接続成功?"}
+    T3 -- "いいえ" --> TF["Wi-Fi接続失敗を通知"]
+    T3 -- "はい" --> TO["NTP所有の接続として記録"]
+
+    WM -. "時刻同期で利用可能" .-> T1
+    TR --> N0["NTP時刻を取得してRTCを更新"]
+    TO --> N0
+    N0 --> N1{"同期成功?"}
+    N1 -- "はい" --> NS["結果と最終成功時刻を保存"]
+    N1 -- "いいえ" --> NF["NTPまたはRTC失敗を通知"]
+    NS --> O{"Wi-Fiを開始した処理は?"}
+    NF --> O
+    O -- "WI-FI画面" --> KEEP["Wi-Fi接続を維持"]
+    O -- "時刻同期" --> STOP["Wi-Fiを即時停止"]
+
+    KEEP --> K0{"停止条件"}
+    WM --> K0
+    K0 -- "DISCONNECT" --> STOP
+    K0 -- "Light Sleep" --> STOP
+```
 
 - `WI-FI`画面には`OFF`、`CONNECTING`、`CONNECTED`、`FAILED`の状態と、
   接続中または接続を試行しているSSIDを表示します。
