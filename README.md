@@ -26,7 +26,7 @@ UTC+9).
 | Display timeout | Implemented and device-tested | 15-second clock timeout, 60-second settings timeout, and guarded touch wake |
 | Light Sleep | Implemented and device-tested | Sleep 5 seconds after display-off and wake by touch or power button |
 | Battery status | Implemented and device-tested | Compact always-visible upper-left battery, charging, USB-power, and low-battery state |
-| Wi-Fi and NTP | Implemented; basic connection device-tested | Wi-Fi status and reconnect screen, multiple fixed networks, persistent 24-hour automatic synchronization, manual `SYNC NOW`, RTC update, and radio shutdown. The latest Wi-Fi UI and timed retry need device verification |
+| Wi-Fi and NTP | Implemented; basic connection device-tested | Wi-Fi status, reconnect/disconnect controls, multiple fixed networks, persistent automatic synchronization, manual `SYNC NOW`, RTC update, and ownership-aware radio shutdown. The latest connection-lifetime behavior needs device verification |
 | Brightness setting | Implemented and device-tested | Separate live-preview screen with `SAVE`/`CANCEL` and NVS persistence |
 | Settings hub | Implemented and build-tested | A single clock-screen `SET` button opens independent `DATE & TIME`, `BRIGHTNESS`, `WI-FI`, and `TIME SYNC` screens through a central hub |
 | Documentation | Implemented | Project-specific English and Japanese README |
@@ -40,9 +40,10 @@ UTC+9).
 - [x] Verify connection to a configured 2.4 GHz Wi-Fi network.
 - [x] Verify touch/power wake after Light Sleep.
 - [ ] Verify multi-network Wi-Fi selection, NTP-to-RTC synchronization, and
-  Wi-Fi shutdown.
+  shutdown of an NTP-owned connection.
 - [ ] Verify Wi-Fi status, SSID display, manual connect/reconnect, and reuse of
-  that connection by `SYNC NOW`.
+  that connection by `SYNC NOW` without disconnecting it afterward.
+- [ ] Verify explicit `DISCONNECT` and automatic disconnect on Light Sleep.
 - [x] Verify brightness persistence after reboot.
 - [x] Verify the upper-left battery status.
 - [ ] Verify the fixed clock layout and timed bottom notifications.
@@ -180,9 +181,12 @@ Light Sleep, wake the display and run the upload command again.
   the connected or currently attempted SSID.
 - `CONNECT` tries the configured networks in priority order. When already
   connected, the same button becomes `RECONNECT` and starts a fresh attempt.
+- `DISCONNECT` cancels a manual connection attempt or stops an established
+  connection immediately.
 - A successful manual connection remains available while the watch is awake.
-  A due automatic synchronization or `SYNC NOW` reuses it without reconnecting.
-- An unused manual connection is shut down when the watch enters Light Sleep.
+  A due automatic synchronization or `SYNC NOW` reuses it without reconnecting
+  and leaves it connected when synchronization finishes.
+- A manual connection is shut down when the watch enters Light Sleep.
 - The last successful NTP synchronization epoch is stored in ESP32 NVS.
 - Synchronization is due when no history exists, RTC time is invalid, at least
   24 hours have elapsed, or the clock has moved behind the previous sync time.
@@ -195,6 +199,8 @@ Light Sleep, wake the display and run the upload command again.
   `SYNC NOW`, the current or most recent result, and the last successful time.
 - `SYNC NOW` bypasses both the 24-hour interval and a pending 15-minute retry
   delay. It remains available when automatic synchronization is disabled.
+- A connection started temporarily by time synchronization is shut down when
+  synchronization finishes. A pre-existing manual connection is preserved.
 - A successful NTP result is written to the hardware RTC, persisted to NVS,
   and followed by Wi-Fi shutdown to reduce power consumption.
 - Wi-Fi and NTP activity appears as a bottom notification, such as
@@ -231,7 +237,7 @@ Light Sleep, wake the display and run the upload command again.
 | 画面消灯 | 実装・実機確認済み | 時計15秒、設定60秒のタイムアウトと、誤操作を防ぐタッチ復帰 |
 | Light Sleep | 実装・実機確認済み | 消灯5秒後に移行し、タッチまたは電源ボタンで復帰 |
 | バッテリー状態 | 実装・実機確認済み | 左上に常時表示する簡潔な残量、充電、USB給電、低残量表示 |
-| Wi-Fi・NTP | 実装済み、基本接続は実機確認済み | Wi-Fi状態・再接続画面、複数固定ネットワーク、24時間ごとの自動同期の永続化、手動`SYNC NOW`、RTC更新、Wi-Fi停止。最新のWi-Fi UIと時間指定再試行は実機確認が必要 |
+| Wi-Fi・NTP | 実装済み、基本接続は実機確認済み | Wi-Fi状態、再接続・切断操作、複数固定ネットワーク、自動同期の永続化、手動`SYNC NOW`、RTC更新、接続元に応じたWi-Fi停止。最新の接続維持動作は実機確認が必要 |
 | 明るさ設定 | 実装・実機確認済み | 即時プレビュー、`SAVE`/`CANCEL`、NVS永続化を備えた独立画面 |
 | 設定ハブ | 実装・ビルド確認済み | 時計画面の単一`SET`ボタンから、中央のハブを経由して独立した`DATE & TIME`、`BRIGHTNESS`、`WI-FI`、`TIME SYNC`画面を開く構成 |
 | ドキュメント | 実装済み | このプロジェクト専用の英語・日本語README |
@@ -244,9 +250,10 @@ Light Sleep, wake the display and run the upload command again.
 - [x] 現在の`t-watch-s3-custom` HEADを実機へデプロイする。
 - [x] 設定した2.4 GHz Wi-Fiネットワークへの接続を確認する。
 - [x] Light Sleep後のタッチ・電源ボタン復帰を確認する。
-- [ ] 複数Wi-Fiの選択、NTPからRTCへの同期、同期後のWi-Fi停止を確認する。
+- [ ] 複数Wi-Fiの選択、NTPからRTCへの同期、NTP自身が開始した接続の停止を確認する。
 - [ ] Wi-Fi状態、SSID表示、手動接続・再接続、その接続を`SYNC NOW`が
-  再利用することを確認する。
+  再利用し、同期後も維持することを確認する。
+- [ ] 明示的な`DISCONNECT`とLight Sleep移行時の自動切断を確認する。
 - [x] 再起動後も明るさ設定が保持されることを確認する。
 - [x] 左上のバッテリー状態を確認する。
 - [ ] 固定幅の時計表示と時間制御された下段通知を確認する。
@@ -382,9 +389,11 @@ pio run -e twatchs3_custom -t upload --upload-port /dev/cu.usbmodemXXXXXX
   接続中または接続を試行しているSSIDを表示します。
 - `CONNECT`は設定済みネットワークを優先順に試します。接続済みの場合、同じ
   ボタンが`RECONNECT`となり、新しい接続試行を開始します。
+- `DISCONNECT`は手動接続の試行を中止するか、確立済みの接続を即時停止します。
 - 手動接続に成功すると、時計が起動中の間は接続を維持します。期限に達した
-  自動同期または`SYNC NOW`は、再接続せずその接続を再利用します。
-- 使用されなかった手動接続は、Light Sleepへ移行するときに停止します。
+  自動同期または`SYNC NOW`は、再接続せずその接続を再利用し、同期完了後も
+  接続を維持します。
+- 手動接続は、Light Sleepへ移行するときに停止します。
 - 最後にNTP同期した時刻をESP32のNVSへ保存します。
 - 同期履歴がない、RTC時刻が無効、前回同期から24時間以上経過、または時計が
   前回同期時刻より前へ戻った場合に同期が必要と判定します。
@@ -397,6 +406,8 @@ pio run -e twatchs3_custom -t upload --upload-port /dev/cu.usbmodemXXXXXX
   現在または直近の結果、最後に成功した同期時刻を表示します。
 - `SYNC NOW`は24時間間隔と15分の再試行待機を無視します。自動同期が無効でも
   手動同期は使用できます。
+- 時刻同期が一時的に開始した接続は同期完了時に停止します。すでに存在していた
+  手動接続は維持します。
 - NTP同期成功後はハードウェアRTCとNVSを更新し、省電力のためWi-Fiを停止します。
 - Wi-Fi・NTPの動作は下段へ`CONNECTING WIFI 1/2`、`SYNCING TIME`、
   `TIME SYNCED`などの通知として表示します。

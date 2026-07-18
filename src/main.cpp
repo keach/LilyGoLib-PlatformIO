@@ -118,6 +118,7 @@ lv_obj_t *wifi_status_label;
 lv_obj_t *wifi_network_label;
 lv_obj_t *wifi_connect_button;
 lv_obj_t *wifi_connect_button_label;
+lv_obj_t *wifi_disconnect_button;
 lv_obj_t *wake_overlay;
 lv_obj_t *field_buttons[static_cast<uint8_t>(SettingField::Count)];
 lv_obj_t *field_labels[static_cast<uint8_t>(SettingField::Count)];
@@ -150,6 +151,7 @@ volatile bool ntp_sync_received = false;
 bool ntp_config_warning_shown = false;
 bool automatic_time_sync_enabled = true;
 bool wifi_connection_in_progress = false;
+bool time_sync_owns_wifi_connection = false;
 
 void syncClockFromRtc();
 void updateBatteryStatus(lv_timer_t *);
@@ -604,7 +606,8 @@ void refreshWiFiScreen()
 {
     if (wifi_screen == nullptr || wifi_status_label == nullptr ||
         wifi_network_label == nullptr || wifi_connect_button == nullptr ||
-        wifi_connect_button_label == nullptr) {
+        wifi_connect_button_label == nullptr ||
+        wifi_disconnect_button == nullptr) {
         return;
     }
 
@@ -648,6 +651,12 @@ void refreshWiFiScreen()
         lv_obj_add_state(wifi_connect_button, LV_STATE_DISABLED);
     } else {
         lv_obj_remove_state(wifi_connect_button, LV_STATE_DISABLED);
+    }
+
+    if (isTimeSyncBusy() || (!connected && !isWiFiConnectionBusy())) {
+        lv_obj_add_state(wifi_disconnect_button, LV_STATE_DISABLED);
+    } else {
+        lv_obj_remove_state(wifi_disconnect_button, LV_STATE_DISABLED);
     }
 }
 
@@ -732,8 +741,11 @@ void stopTimeSyncRadio()
     if (time_sync_state == TimeSyncState::WaitingForNtp) {
         esp_sntp_stop();
     }
-    WiFi.disconnect(true, false);
+    if (time_sync_owns_wifi_connection) {
+        WiFi.disconnect(true, false);
+    }
     time_sync_state = TimeSyncState::Idle;
+    time_sync_owns_wifi_connection = false;
     refreshWiFiScreen();
 }
 
@@ -903,9 +915,11 @@ void requestTimeSync(bool force)
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(false);
     if (WiFi.status() == WL_CONNECTED) {
+        time_sync_owns_wifi_connection = false;
         beginNtpSyncOnConnectedWiFi();
         return;
     }
+    time_sync_owns_wifi_connection = true;
     wifi_credential_index = 0;
     if (!startCurrentWiFiNetwork()) {
         failTimeSync("no usable Wi-Fi credentials");
@@ -1268,6 +1282,19 @@ void reconnectWiFiCallback(lv_event_t *)
     refreshWiFiScreen();
 }
 
+void disconnectWiFiCallback(lv_event_t *)
+{
+    if (isTimeSyncBusy()) {
+        return;
+    }
+    wifi_connection_in_progress = false;
+    wifi_connection_result = WiFiConnectionResult::Unknown;
+    WiFi.disconnect(true, false);
+    refreshWiFiScreen();
+    refreshTimeSyncScreen();
+    Serial.println("Wi-Fi disconnected by user");
+}
+
 void showWiFiScreen(lv_event_t *)
 {
     lv_screen_load_anim(wifi_screen, LV_SCR_LOAD_ANIM_MOVE_LEFT,
@@ -1614,13 +1641,17 @@ void createWiFiScreen()
     lv_obj_align(power_note, LV_ALIGN_TOP_MID, 0, 112);
 
     wifi_connect_button = createButton(wifi_screen, "CONNECT",
-                                       20, 142, 200, 42,
+                                       20, 142, 96, 42,
                                        reconnectWiFiCallback);
     wifi_connect_button_label = lv_obj_get_child(wifi_connect_button, 0);
     lv_obj_set_style_bg_color(wifi_connect_button,
                               lv_color_hex(kAccentColor), 0);
     lv_obj_set_style_text_color(wifi_connect_button_label,
                                 lv_color_hex(kBackgroundColor), 0);
+
+    wifi_disconnect_button = createButton(wifi_screen, "DISCONNECT",
+                                          124, 142, 96, 42,
+                                          disconnectWiFiCallback);
 
     createButton(wifi_screen, "BACK", 20, 202, 200, 30,
                  returnToSettingsHubScreen);
