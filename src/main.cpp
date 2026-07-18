@@ -5,6 +5,7 @@
 #include <LV_Helper.h>
 #include <Preferences.h>
 #include <WiFi.h>
+#include <esp_sleep.h>
 #include <esp_sntp.h>
 
 #include <stdint.h>
@@ -76,6 +77,12 @@ enum class TimeSyncState : uint8_t {
     WaitingForNtp,
 };
 
+enum class TimeSyncResult : uint8_t {
+    Never,
+    Success,
+    Failed,
+};
+
 const char *const kFieldNames[] = {
     "YEAR", "MONTH", "DAY", "HOUR", "MINUTE", "SECOND",
 };
@@ -84,6 +91,7 @@ lv_obj_t *clock_screen;
 lv_obj_t *settings_hub_screen;
 lv_obj_t *date_time_screen;
 lv_obj_t *brightness_screen;
+lv_obj_t *time_sync_screen;
 lv_obj_t *hour_label;
 lv_obj_t *minute_label;
 lv_obj_t *second_label;
@@ -95,6 +103,10 @@ lv_obj_t *settings_status_label;
 lv_obj_t *brightness_slider;
 lv_obj_t *brightness_value_label;
 lv_obj_t *brightness_status_label;
+lv_obj_t *auto_sync_button_label;
+lv_obj_t *sync_now_button;
+lv_obj_t *sync_screen_status_label;
+lv_obj_t *last_sync_label;
 lv_obj_t *wake_overlay;
 lv_obj_t *field_buttons[static_cast<uint8_t>(SettingField::Count)];
 lv_obj_t *field_labels[static_cast<uint8_t>(SettingField::Count)];
@@ -113,6 +125,7 @@ bool screen_on = true;
 uint8_t active_brightness = kDefaultBrightness;
 uint8_t pending_brightness = kDefaultBrightness;
 TimeSyncState time_sync_state = TimeSyncState::Idle;
+TimeSyncResult last_time_sync_result = TimeSyncResult::Never;
 size_t wifi_credential_index = 0;
 uint32_t time_sync_state_started_ms = 0;
 uint32_t wifi_retry_not_before_ms = 0;
@@ -120,11 +133,14 @@ uint32_t time_sync_notification_hide_ms = 0;
 time_t last_ntp_sync_epoch = 0;
 volatile bool ntp_sync_received = false;
 bool ntp_config_warning_shown = false;
+bool automatic_time_sync_enabled = true;
 
 void syncClockFromRtc();
 void updateBatteryStatus(lv_timer_t *);
 void requestTimeSyncIfDue();
 bool isTimeSyncBusy();
+void refreshTimeSyncScreen();
+uint64_t nextAutomaticSyncWakeupUs();
 
 bool isValidDateTime(const struct tm &timeinfo)
 {
@@ -224,12 +240,30 @@ void enterLightSleep()
     Serial.println("Entering light sleep");
     Serial.flush();
 
+    const uint64_t timer_wakeup_us = nextAutomaticSyncWakeupUs();
+    if (timer_wakeup_us != 0) {
+        esp_sleep_enable_timer_wakeup(timer_wakeup_us);
+    }
+
     instance.lightSleep(static_cast<WakeupSource_t>(
         WAKEUP_SRC_POWER_KEY | WAKEUP_SRC_TOUCH_PANEL));
 
+    const esp_sleep_wakeup_cause_t wakeup_cause =
+        esp_sleep_get_wakeup_cause();
     const bool woke_by_touch =
-        esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT1 &&
+        wakeup_cause == ESP_SLEEP_WAKEUP_EXT1 &&
         (esp_sleep_get_ext1_wakeup_status() & (1ULL << TP_INT)) != 0;
+
+    if (timer_wakeup_us != 0) {
+        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+    }
+
+    if (wakeup_cause == ESP_SLEEP_WAKEUP_TIMER) {
+        screen_off_ms = millis();
+        requestTimeSyncIfDue();
+        Serial.println("Light sleep wake: automatic time sync");
+        return;
+    }
 
     // Keep the overlay in place for a touch wake so the same physical touch
     // cannot activate the SET button or another control after resume.
@@ -450,6 +484,87 @@ bool isNtpSyncDue()
     return now - last_ntp_sync_epoch >= kNtpSyncIntervalSeconds;
 }
 
+uint64_t nextAutomaticSyncWakeupUs()
+{
+    if (!automatic_time_sync_enabled || kWiFiCredentialCount == 0 ||
+        isTimeSyncBusy()) {
+        return 0;
+    }
+
+    if (isNtpSyncDue()) {
+        if (wifi_retry_not_before_ms != 0) {
+            const int32_t remaining_ms = static_cast<int32_t>(
+                wifi_retry_not_before_ms - millis());
+            if (remaining_ms > 0) {
+                return static_cast<uint64_t>(remaining_ms) * 1000ULL;
+            }
+        }
+        // The main loop normally starts a due synchronization before sleep.
+        // Keep a short timer as a fallback if the state changes at the edge.
+        return 1000ULL * 1000ULL;
+    }
+
+    const time_t now = time(nullptr);
+    const time_t next_sync = last_ntp_sync_epoch + kNtpSyncIntervalSeconds;
+    if (now < kMinimumValidEpoch || next_sync <= now) {
+        return 1000ULL * 1000ULL;
+    }
+    return static_cast<uint64_t>(next_sync - now) * 1000ULL * 1000ULL;
+}
+
+void refreshTimeSyncScreen()
+{
+    if (time_sync_screen == nullptr || auto_sync_button_label == nullptr ||
+        sync_screen_status_label == nullptr || last_sync_label == nullptr ||
+        sync_now_button == nullptr) {
+        return;
+    }
+
+    lv_label_set_text(auto_sync_button_label,
+                      automatic_time_sync_enabled
+                          ? "AUTO SYNC: ON"
+                          : "AUTO SYNC: OFF");
+
+    const char *status = "NEVER SYNCED";
+    uint32_t status_color = kMutedColor;
+    if (time_sync_state == TimeSyncState::Connecting) {
+        status = "CONNECTING";
+        status_color = kAccentColor;
+    } else if (time_sync_state == TimeSyncState::WaitingForNtp) {
+        status = "SYNCING";
+        status_color = kAccentColor;
+    } else if (last_time_sync_result == TimeSyncResult::Success) {
+        status = "SYNCED";
+        status_color = kAccentColor;
+    } else if (last_time_sync_result == TimeSyncResult::Failed) {
+        status = "FAILED";
+        status_color = kLowBatteryColor;
+    }
+    lv_label_set_text_fmt(sync_screen_status_label, "STATUS: %s", status);
+    lv_obj_set_style_text_color(sync_screen_status_label,
+                                lv_color_hex(status_color), 0);
+
+    if (last_ntp_sync_epoch < kMinimumValidEpoch) {
+        lv_label_set_text(last_sync_label, "LAST SYNC: NEVER");
+    } else {
+        struct tm local_time = {};
+        localtime_r(&last_ntp_sync_epoch, &local_time);
+        lv_label_set_text_fmt(last_sync_label,
+                              "LAST: %04d-%02d-%02d %02d:%02d",
+                              local_time.tm_year + 1900,
+                              local_time.tm_mon + 1,
+                              local_time.tm_mday,
+                              local_time.tm_hour,
+                              local_time.tm_min);
+    }
+
+    if (isTimeSyncBusy()) {
+        lv_obj_add_state(sync_now_button, LV_STATE_DISABLED);
+    } else {
+        lv_obj_remove_state(sync_now_button, LV_STATE_DISABLED);
+    }
+}
+
 void loadBrightnessSetting()
 {
     Preferences preferences;
@@ -481,27 +596,41 @@ bool saveBrightnessSetting()
     return bytes_written == sizeof(active_brightness);
 }
 
-void loadLastNtpSync()
+void loadTimeSyncSettings()
 {
     Preferences preferences;
     if (!preferences.begin("clock_sync", true)) {
-        Serial.println("Unable to read NTP sync history");
+        Serial.println("Unable to read time sync settings");
         return;
     }
     last_ntp_sync_epoch = static_cast<time_t>(
         preferences.getULong64("last_ntp", 0));
+    automatic_time_sync_enabled = preferences.getBool("auto_sync", true);
+    const uint8_t default_result =
+        last_ntp_sync_epoch >= kMinimumValidEpoch
+            ? static_cast<uint8_t>(TimeSyncResult::Success)
+            : static_cast<uint8_t>(TimeSyncResult::Never);
+    const uint8_t stored_result =
+        preferences.getUChar("last_result", default_result);
+    last_time_sync_result =
+        stored_result <= static_cast<uint8_t>(TimeSyncResult::Failed)
+            ? static_cast<TimeSyncResult>(stored_result)
+            : TimeSyncResult::Never;
     preferences.end();
 }
 
-void saveLastNtpSync()
+void saveTimeSyncSettings()
 {
     Preferences preferences;
     if (!preferences.begin("clock_sync", false)) {
-        Serial.println("Unable to save NTP sync history");
+        Serial.println("Unable to save time sync settings");
         return;
     }
     preferences.putULong64("last_ntp",
                            static_cast<uint64_t>(last_ntp_sync_epoch));
+    preferences.putBool("auto_sync", automatic_time_sync_enabled);
+    preferences.putUChar("last_result",
+                         static_cast<uint8_t>(last_time_sync_result));
     preferences.end();
 }
 
@@ -538,6 +667,7 @@ bool startCurrentWiFiNetwork()
                      static_cast<unsigned>(wifi_credential_index + 1),
                      static_cast<unsigned>(kWiFiCredentialCount));
             setTimeSyncStatus(notification, kAccentColor);
+            refreshTimeSyncScreen();
             Serial.printf("Connecting to Wi-Fi network %u of %u\n",
                           static_cast<unsigned>(wifi_credential_index + 1),
                           static_cast<unsigned>(kWiFiCredentialCount));
@@ -553,13 +683,19 @@ void failTimeSync(const char *reason)
     Serial.printf("Time sync failed: %s\n", reason);
     stopTimeSyncRadio();
     wifi_retry_not_before_ms = millis() + kWiFiRetryIntervalMs;
+    last_time_sync_result = TimeSyncResult::Failed;
+    saveTimeSyncSettings();
+    refreshTimeSyncScreen();
     setTimeSyncStatus("NTP SYNC FAILED", kLowBatteryColor,
                       kWarningNotificationMs);
 }
 
-void requestTimeSyncIfDue()
+void requestTimeSync(bool force)
 {
     if (isTimeSyncBusy()) {
+        return;
+    }
+    if (!force && !automatic_time_sync_enabled) {
         return;
     }
     if (kWiFiCredentialCount == 0) {
@@ -568,23 +704,35 @@ void requestTimeSyncIfDue()
             setTimeSyncStatus("NTP NOT CONFIGURED", kMutedColor,
                               kWarningNotificationMs);
         }
+        if (force) {
+            last_time_sync_result = TimeSyncResult::Failed;
+            saveTimeSyncSettings();
+            refreshTimeSyncScreen();
+        }
         return;
     }
-    if (!isNtpSyncDue()) {
-        hideTimeSyncNotification();
+    if (!force && !isNtpSyncDue()) {
         return;
     }
-    if (wifi_retry_not_before_ms != 0 &&
+    if (!force && wifi_retry_not_before_ms != 0 &&
         static_cast<int32_t>(millis() - wifi_retry_not_before_ms) < 0) {
         return;
     }
 
+    if (force) {
+        wifi_retry_not_before_ms = 0;
+    }
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(false);
     wifi_credential_index = 0;
     if (!startCurrentWiFiNetwork()) {
         failTimeSync("no usable Wi-Fi credentials");
     }
+}
+
+void requestTimeSyncIfDue()
+{
+    requestTimeSync(false);
 }
 
 void completeNtpSync()
@@ -601,9 +749,12 @@ void completeNtpSync()
     }
 
     last_ntp_sync_epoch = now;
-    saveLastNtpSync();
+    last_time_sync_result = TimeSyncResult::Success;
+    wifi_retry_not_before_ms = 0;
+    saveTimeSyncSettings();
     stopTimeSyncRadio();
     syncClockFromRtc();
+    refreshTimeSyncScreen();
     setTimeSyncStatus("TIME SYNCED", kAccentColor,
                       kSuccessNotificationMs);
     Serial.println("NTP time written to RTC");
@@ -613,6 +764,7 @@ void processTimeSync()
 {
     switch (time_sync_state) {
     case TimeSyncState::Idle:
+        requestTimeSyncIfDue();
         return;
 
     case TimeSyncState::Connecting:
@@ -622,6 +774,7 @@ void processTimeSync()
             time_sync_state = TimeSyncState::WaitingForNtp;
             time_sync_state_started_ms = millis();
             setTimeSyncStatus("SYNCING TIME", kAccentColor);
+            refreshTimeSyncScreen();
             configTzTime(kTimeZone, kNtpServer1, kNtpServer2, kNtpServer3);
             return;
         }
@@ -893,6 +1046,38 @@ void showDateTimeScreen(lv_event_t *)
                         180, 0, false);
 }
 
+void timeSyncScreenEventCallback(lv_event_t *event)
+{
+    if (lv_event_get_code(event) == LV_EVENT_SCREEN_LOAD_START) {
+        last_activity_ms = millis();
+        refreshTimeSyncScreen();
+    }
+}
+
+void toggleAutomaticTimeSyncCallback(lv_event_t *)
+{
+    automatic_time_sync_enabled = !automatic_time_sync_enabled;
+    saveTimeSyncSettings();
+    if (automatic_time_sync_enabled) {
+        requestTimeSyncIfDue();
+    }
+    refreshTimeSyncScreen();
+    Serial.printf("Automatic time sync: %s\n",
+                  automatic_time_sync_enabled ? "enabled" : "disabled");
+}
+
+void syncNowCallback(lv_event_t *)
+{
+    requestTimeSync(true);
+    refreshTimeSyncScreen();
+}
+
+void showTimeSyncScreen(lv_event_t *)
+{
+    lv_screen_load_anim(time_sync_screen, LV_SCR_LOAD_ANIM_MOVE_LEFT,
+                        180, 0, false);
+}
+
 void settingsHubScreenEventCallback(lv_event_t *event)
 {
     if (lv_event_get_code(event) == LV_EVENT_SCREEN_LOAD_START) {
@@ -993,20 +1178,22 @@ void createSettingsHubScreen()
     lv_label_set_text(title, "SETTINGS");
     lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(kAccentColor), 0);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 16);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
 
     lv_obj_t *subtitle = lv_label_create(settings_hub_screen);
     lv_label_set_text(subtitle, "SELECT AN OPTION");
     lv_obj_set_style_text_font(subtitle, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(subtitle, lv_color_hex(kMutedColor), 0);
-    lv_obj_align(subtitle, LV_ALIGN_TOP_MID, 0, 48);
+    lv_obj_align(subtitle, LV_ALIGN_TOP_MID, 0, 38);
 
     createButton(settings_hub_screen, "DATE & TIME",
-                 20, 72, 200, 46, showDateTimeScreen);
+                 20, 58, 200, 38, showDateTimeScreen);
     createButton(settings_hub_screen, "BRIGHTNESS",
-                 20, 128, 200, 46, showBrightnessScreen);
+                 20, 104, 200, 38, showBrightnessScreen);
+    createButton(settings_hub_screen, "TIME SYNC",
+                 20, 150, 200, 38, showTimeSyncScreen);
     createButton(settings_hub_screen, "BACK",
-                 20, 194, 200, 34, showClockScreen);
+                 20, 198, 200, 30, showClockScreen);
 }
 
 void createDateTimeScreen()
@@ -1136,6 +1323,52 @@ void createBrightnessScreen()
                                 lv_color_hex(kBackgroundColor), 0);
 }
 
+void createTimeSyncScreen()
+{
+    time_sync_screen = lv_obj_create(nullptr);
+    styleScreen(time_sync_screen);
+    lv_obj_add_event_cb(time_sync_screen, markUserActivity,
+                        LV_EVENT_PRESSED, nullptr);
+    lv_obj_add_event_cb(time_sync_screen, timeSyncScreenEventCallback,
+                        LV_EVENT_SCREEN_LOAD_START, nullptr);
+
+    lv_obj_t *title = lv_label_create(time_sync_screen);
+    lv_label_set_text(title, "TIME SYNC");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(kAccentColor), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 12);
+
+    lv_obj_t *auto_sync_button = createButton(
+        time_sync_screen, "AUTO SYNC: ON",
+        20, 48, 200, 38, toggleAutomaticTimeSyncCallback);
+    auto_sync_button_label = lv_obj_get_child(auto_sync_button, 0);
+
+    sync_screen_status_label = lv_label_create(time_sync_screen);
+    lv_label_set_text(sync_screen_status_label, "STATUS: NEVER SYNCED");
+    lv_obj_set_style_text_font(sync_screen_status_label,
+                               &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(sync_screen_status_label,
+                                lv_color_hex(kMutedColor), 0);
+    lv_obj_align(sync_screen_status_label, LV_ALIGN_TOP_MID, 0, 98);
+
+    last_sync_label = lv_label_create(time_sync_screen);
+    lv_label_set_text(last_sync_label, "LAST SYNC: NEVER");
+    lv_obj_set_style_text_font(last_sync_label, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(last_sync_label,
+                                lv_color_hex(kMutedColor), 0);
+    lv_obj_align(last_sync_label, LV_ALIGN_TOP_MID, 0, 124);
+
+    sync_now_button = createButton(time_sync_screen, "SYNC NOW",
+                                   20, 150, 200, 40, syncNowCallback);
+    lv_obj_set_style_bg_color(sync_now_button, lv_color_hex(kAccentColor), 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(sync_now_button, 0),
+                                lv_color_hex(kBackgroundColor), 0);
+
+    createButton(time_sync_screen, "BACK", 20, 202, 200, 30,
+                 returnToSettingsHubScreen);
+    refreshTimeSyncScreen();
+}
+
 void createWakeOverlay()
 {
     wake_overlay = lv_obj_create(lv_layer_top());
@@ -1161,11 +1394,13 @@ void setup()
     instance.begin();
     beginLvglHelper(instance);
     loadBrightnessSetting();
+    loadTimeSyncSettings();
 
     createClockScreen();
     createSettingsHubScreen();
     createDateTimeScreen();
     createBrightnessScreen();
+    createTimeSyncScreen();
     createWakeOverlay();
     syncClockFromRtc();
     updateBatteryStatus(nullptr);
@@ -1174,7 +1409,6 @@ void setup()
 
     instance.onEvent(deviceEventCallback, POWER_EVENT, nullptr);
     sntp_set_time_sync_notification_cb(ntpTimeAvailableCallback);
-    loadLastNtpSync();
     last_activity_ms = millis();
     instance.setBrightness(active_brightness);
     requestTimeSyncIfDue();

@@ -26,9 +26,9 @@ UTC+9).
 | Display timeout | Implemented and device-tested | 15-second clock timeout, 60-second settings timeout, and guarded touch wake |
 | Light Sleep | Implemented and device-tested | Sleep 5 seconds after display-off and wake by touch or power button |
 | Battery status | Implemented and device-tested | Compact always-visible upper-left battery, charging, USB-power, and low-battery state |
-| Wi-Fi and NTP | Implemented; basic connection device-tested | A configured 2.4 GHz network connects on the device. Multi-network fallback, NTP persistence, and radio shutdown still need explicit verification |
+| Wi-Fi and NTP | Implemented; basic connection device-tested | Multiple fixed networks, persistent 24-hour automatic synchronization, manual `SYNC NOW`, RTC update, radio shutdown, and status display. The latest settings UI and timed retry need device verification |
 | Brightness setting | Implemented and device-tested | Separate live-preview screen with `SAVE`/`CANCEL` and NVS persistence |
-| Settings hub | Implemented and build-tested | A single clock-screen `SET` button opens independent `DATE & TIME` and `BRIGHTNESS` screens through a central hub |
+| Settings hub | Implemented and build-tested | A single clock-screen `SET` button opens independent `DATE & TIME`, `BRIGHTNESS`, and `TIME SYNC` screens through a central hub |
 | Documentation | Implemented | Project-specific English and Japanese README |
 
 ### Roadmap
@@ -50,9 +50,9 @@ UTC+9).
 - [x] Add a settings hub for navigating independent settings screens.
 - [x] Group the existing date/time and brightness screens under the settings
   hub.
-- [ ] Add a time synchronization screen with `SYNC NOW`, automatic sync
+- [x] Add a time synchronization screen with `SYNC NOW`, automatic sync
   enable/disable, and the last synchronization result and time.
-- [ ] Retry a failed Wi-Fi/NTP operation after 15 minutes without requiring a
+- [x] Retry a failed Wi-Fi/NTP operation after 15 minutes without requiring a
   display wake.
 
 #### Planned persistent settings
@@ -60,7 +60,7 @@ UTC+9).
 - [ ] Configurable clock-screen timeout
 - [ ] Configurable settings-screen timeout
 - [ ] Configurable delay before Light Sleep
-- [ ] Automatic NTP synchronization enable/disable
+- [x] Automatic NTP synchronization enable/disable
 - [ ] 12-hour/24-hour clock selection
 - [ ] Restore-default-settings action
 
@@ -157,14 +157,16 @@ Light Sleep, wake the display and run the upload command again.
 ### Clock and power behavior
 
 - Use `SET` on the clock screen to open the settings hub.
-- Select `DATE & TIME` or `BRIGHTNESS` in the hub. `SAVE` and `CANCEL` return
-  to the hub, and `BACK` returns to the clock.
+- Select `DATE & TIME`, `BRIGHTNESS`, or `TIME SYNC` in the hub. `SAVE`,
+  `CANCEL`, and `BACK` return to the hub; the hub's `BACK` returns to the clock.
 - Brightness changes are previewed immediately; `SAVE` persists the value to
   NVS and `CANCEL` restores the previous value.
 - The clock screen turns off after 15 seconds of inactivity.
 - The settings screen turns off after 60 seconds of inactivity.
 - Light Sleep begins 5 seconds after the display turns off.
 - A touch or a short power-button press wakes the watch.
+- When automatic time synchronization is enabled, an internal timer can wake
+  the watch without turning on the display to perform a due synchronization.
 - The wake touch is consumed so it does not accidentally activate a control.
 - RTC time and battery state are refreshed after wake.
 - A compact battery or power status remains visible at the upper left.
@@ -174,11 +176,15 @@ Light Sleep, wake the display and run the upload command again.
 - The last successful NTP synchronization epoch is stored in ESP32 NVS.
 - Synchronization is due when no history exists, RTC time is invalid, at least
   24 hours have elapsed, or the clock has moved behind the previous sync time.
-- Wi-Fi is powered only when synchronization is due.
+- Wi-Fi is powered only when synchronization is due or `SYNC NOW` is selected.
 - Registered networks are attempted in order, with 10 seconds per network.
 - NTP is allowed 15 seconds after a Wi-Fi connection is established.
-- Failed attempts are suppressed for 15 minutes and retried after a later
-  display wake.
+- Failed automatic attempts are suppressed for 15 minutes, then retried by a
+  Light Sleep timer without requiring a display wake.
+- The `TIME SYNC` screen provides a persistent automatic-sync toggle,
+  `SYNC NOW`, the current or most recent result, and the last successful time.
+- `SYNC NOW` bypasses both the 24-hour interval and a pending 15-minute retry
+  delay. It remains available when automatic synchronization is disabled.
 - A successful NTP result is written to the hardware RTC, persisted to NVS,
   and followed by Wi-Fi shutdown to reduce power consumption.
 - Wi-Fi and NTP activity appears as a bottom notification, such as
@@ -215,9 +221,9 @@ Light Sleep, wake the display and run the upload command again.
 | 画面消灯 | 実装・実機確認済み | 時計15秒、設定60秒のタイムアウトと、誤操作を防ぐタッチ復帰 |
 | Light Sleep | 実装・実機確認済み | 消灯5秒後に移行し、タッチまたは電源ボタンで復帰 |
 | バッテリー状態 | 実装・実機確認済み | 左上に常時表示する簡潔な残量、充電、USB給電、低残量表示 |
-| Wi-Fi・NTP | 実装済み、基本接続は実機確認済み | 設定した2.4 GHzネットワークへの接続を実機確認済み。複数ネットワークの切り替え、NTP履歴の永続化、Wi-Fi停止は明示的な確認が必要 |
+| Wi-Fi・NTP | 実装済み、基本接続は実機確認済み | 複数固定ネットワーク、24時間ごとの自動同期の永続化、手動`SYNC NOW`、RTC更新、Wi-Fi停止、状態表示。最新の設定UIと時間指定再試行は実機確認が必要 |
 | 明るさ設定 | 実装・実機確認済み | 即時プレビュー、`SAVE`/`CANCEL`、NVS永続化を備えた独立画面 |
-| 設定ハブ | 実装・ビルド確認済み | 時計画面の単一`SET`ボタンから、中央のハブを経由して独立した`DATE & TIME`と`BRIGHTNESS`画面を開く構成 |
+| 設定ハブ | 実装・ビルド確認済み | 時計画面の単一`SET`ボタンから、中央のハブを経由して独立した`DATE & TIME`、`BRIGHTNESS`、`TIME SYNC`画面を開く構成 |
 | ドキュメント | 実装済み | このプロジェクト専用の英語・日本語README |
 
 ### ロードマップ
@@ -237,16 +243,16 @@ Light Sleep, wake the display and run the upload command again.
 
 - [x] 独立した設定画面へ移動するための設定ハブを追加する。
 - [x] 既存の日付・時刻設定と明るさ設定を設定ハブへまとめる。
-- [ ] `SYNC NOW`、自動同期の有効・無効、最終同期結果・時刻を備えた
+- [x] `SYNC NOW`、自動同期の有効・無効、最終同期結果・時刻を備えた
   時刻同期設定画面を追加する。
-- [ ] Wi-Fi・NTP失敗から15分後、画面復帰を必要とせず再試行する。
+- [x] Wi-Fi・NTP失敗から15分後、画面復帰を必要とせず再試行する。
 
 #### 実装予定の設定永続化
 
 - [ ] 時計画面の消灯時間設定
 - [ ] 設定画面の消灯時間設定
 - [ ] Light Sleepまでの待機時間設定
-- [ ] NTP自動同期の有効・無効
+- [x] NTP自動同期の有効・無効
 - [ ] 12時間・24時間表示の選択
 - [ ] 設定を初期値へ戻す操作
 
@@ -343,14 +349,16 @@ pio run -e twatchs3_custom -t upload --upload-port /dev/cu.usbmodemXXXXXX
 ### 時計・省電力動作
 
 - 時計画面の`SET`から設定ハブを開きます。
-- ハブで`DATE & TIME`または`BRIGHTNESS`を選択します。`SAVE`と`CANCEL`は
-  ハブへ戻り、`BACK`は時計画面へ戻ります。
+- ハブで`DATE & TIME`、`BRIGHTNESS`、`TIME SYNC`のいずれかを選択します。
+  `SAVE`、`CANCEL`、`BACK`はハブへ戻り、ハブの`BACK`は時計画面へ戻ります。
 - 明るさは操作中に即時反映され、`SAVE`でNVSへ保存、`CANCEL`で変更前の値へ
   戻ります。
 - 時計画面は15秒間操作がないと消灯します。
 - 設定画面は60秒間操作がないと消灯します。
 - 消灯から5秒後にLight Sleepへ移行します。
 - タッチまたは電源ボタンの短押しで復帰します。
+- 自動時刻同期が有効な場合、内部タイマーが画面を点灯せずに時計を復帰させ、
+  期限に達した同期を実行できます。
 - 復帰に使ったタッチは吸収され、背後のボタンを誤操作しません。
 - 復帰時にRTC時刻とバッテリー状態を更新します。
 - 左上には簡潔なバッテリー・給電状態を常時表示します。
@@ -360,10 +368,15 @@ pio run -e twatchs3_custom -t upload --upload-port /dev/cu.usbmodemXXXXXX
 - 最後にNTP同期した時刻をESP32のNVSへ保存します。
 - 同期履歴がない、RTC時刻が無効、前回同期から24時間以上経過、または時計が
   前回同期時刻より前へ戻った場合に同期が必要と判定します。
-- 同期が必要な場合だけWi-Fiを起動します。
+- 同期が必要な場合、または`SYNC NOW`を選択した場合だけWi-Fiを起動します。
 - 登録されたネットワークを順番に試し、1ネットワークにつき10秒待ちます。
 - Wi-Fi接続後、NTPの応答を15秒待ちます。
-- 全候補が失敗した場合は15分間再試行を抑制し、その後の画面復帰時に再試行します。
+- 自動同期で全候補が失敗した場合は15分間再試行を抑制し、その後はLight Sleepの
+  タイマーで画面復帰を必要とせず再試行します。
+- `TIME SYNC`画面には、永続化される自動同期の有効・無効、`SYNC NOW`、
+  現在または直近の結果、最後に成功した同期時刻を表示します。
+- `SYNC NOW`は24時間間隔と15分の再試行待機を無視します。自動同期が無効でも
+  手動同期は使用できます。
 - NTP同期成功後はハードウェアRTCとNVSを更新し、省電力のためWi-Fiを停止します。
 - Wi-Fi・NTPの動作は下段へ`CONNECTING WIFI 1/2`、`SYNCING TIME`、
   `TIME SYNCED`などの通知として表示します。
