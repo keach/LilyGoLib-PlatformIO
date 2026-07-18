@@ -83,6 +83,12 @@ enum class TimeSyncResult : uint8_t {
     Failed,
 };
 
+enum class WiFiConnectionResult : uint8_t {
+    Unknown,
+    Connected,
+    Failed,
+};
+
 const char *const kFieldNames[] = {
     "YEAR", "MONTH", "DAY", "HOUR", "MINUTE", "SECOND",
 };
@@ -92,6 +98,7 @@ lv_obj_t *settings_hub_screen;
 lv_obj_t *date_time_screen;
 lv_obj_t *brightness_screen;
 lv_obj_t *time_sync_screen;
+lv_obj_t *wifi_screen;
 lv_obj_t *hour_label;
 lv_obj_t *minute_label;
 lv_obj_t *second_label;
@@ -107,6 +114,10 @@ lv_obj_t *auto_sync_button_label;
 lv_obj_t *sync_now_button;
 lv_obj_t *sync_screen_status_label;
 lv_obj_t *last_sync_label;
+lv_obj_t *wifi_status_label;
+lv_obj_t *wifi_network_label;
+lv_obj_t *wifi_connect_button;
+lv_obj_t *wifi_connect_button_label;
 lv_obj_t *wake_overlay;
 lv_obj_t *field_buttons[static_cast<uint8_t>(SettingField::Count)];
 lv_obj_t *field_labels[static_cast<uint8_t>(SettingField::Count)];
@@ -126,20 +137,28 @@ uint8_t active_brightness = kDefaultBrightness;
 uint8_t pending_brightness = kDefaultBrightness;
 TimeSyncState time_sync_state = TimeSyncState::Idle;
 TimeSyncResult last_time_sync_result = TimeSyncResult::Never;
+WiFiConnectionResult wifi_connection_result =
+    WiFiConnectionResult::Unknown;
 size_t wifi_credential_index = 0;
+size_t wifi_connection_credential_index = 0;
 uint32_t time_sync_state_started_ms = 0;
+uint32_t wifi_connection_started_ms = 0;
 uint32_t wifi_retry_not_before_ms = 0;
 uint32_t time_sync_notification_hide_ms = 0;
 time_t last_ntp_sync_epoch = 0;
 volatile bool ntp_sync_received = false;
 bool ntp_config_warning_shown = false;
 bool automatic_time_sync_enabled = true;
+bool wifi_connection_in_progress = false;
 
 void syncClockFromRtc();
 void updateBatteryStatus(lv_timer_t *);
 void requestTimeSyncIfDue();
 bool isTimeSyncBusy();
+bool isWiFiConnectionBusy();
+bool isRadioBusy();
 void refreshTimeSyncScreen();
+void refreshWiFiScreen();
 uint64_t nextAutomaticSyncWakeupUs();
 
 bool isValidDateTime(const struct tm &timeinfo)
@@ -239,6 +258,12 @@ void enterLightSleep()
 {
     Serial.println("Entering light sleep");
     Serial.flush();
+
+    if (!isTimeSyncBusy() && WiFi.status() == WL_CONNECTED) {
+        WiFi.disconnect(true, false);
+        wifi_connection_result = WiFiConnectionResult::Unknown;
+        refreshWiFiScreen();
+    }
 
     const uint64_t timer_wakeup_us = nextAutomaticSyncWakeupUs();
     if (timer_wakeup_us != 0) {
@@ -472,6 +497,16 @@ bool isTimeSyncBusy()
     return time_sync_state != TimeSyncState::Idle;
 }
 
+bool isWiFiConnectionBusy()
+{
+    return wifi_connection_in_progress;
+}
+
+bool isRadioBusy()
+{
+    return isTimeSyncBusy() || isWiFiConnectionBusy();
+}
+
 bool isNtpSyncDue()
 {
     const time_t now = time(nullptr);
@@ -487,7 +522,7 @@ bool isNtpSyncDue()
 uint64_t nextAutomaticSyncWakeupUs()
 {
     if (!automatic_time_sync_enabled || kWiFiCredentialCount == 0 ||
-        isTimeSyncBusy()) {
+        isRadioBusy()) {
         return 0;
     }
 
@@ -558,10 +593,61 @@ void refreshTimeSyncScreen()
                               local_time.tm_min);
     }
 
-    if (isTimeSyncBusy()) {
+    if (isRadioBusy()) {
         lv_obj_add_state(sync_now_button, LV_STATE_DISABLED);
     } else {
         lv_obj_remove_state(sync_now_button, LV_STATE_DISABLED);
+    }
+}
+
+void refreshWiFiScreen()
+{
+    if (wifi_screen == nullptr || wifi_status_label == nullptr ||
+        wifi_network_label == nullptr || wifi_connect_button == nullptr ||
+        wifi_connect_button_label == nullptr) {
+        return;
+    }
+
+    const bool connected = WiFi.status() == WL_CONNECTED;
+    const bool connecting = isWiFiConnectionBusy() ||
+                            time_sync_state == TimeSyncState::Connecting;
+    const char *status = "OFF";
+    uint32_t status_color = kMutedColor;
+    if (connected) {
+        status = "CONNECTED";
+        status_color = kAccentColor;
+    } else if (connecting) {
+        status = "CONNECTING";
+        status_color = kAccentColor;
+    } else if (wifi_connection_result == WiFiConnectionResult::Failed) {
+        status = "FAILED";
+        status_color = kLowBatteryColor;
+    }
+    lv_label_set_text_fmt(wifi_status_label, "STATUS: %s", status);
+    lv_obj_set_style_text_color(wifi_status_label,
+                                lv_color_hex(status_color), 0);
+
+    if (connected) {
+        lv_label_set_text_fmt(wifi_network_label, "NETWORK: %s",
+                              WiFi.SSID().c_str());
+    } else if (isWiFiConnectionBusy() &&
+               wifi_connection_credential_index < kWiFiCredentialCount) {
+        const WiFiCredential &credential =
+            kWiFiCredentials[wifi_connection_credential_index];
+        lv_label_set_text_fmt(wifi_network_label, "NETWORK: %s",
+                              credential.ssid == nullptr
+                                  ? "UNKNOWN"
+                                  : credential.ssid);
+    } else {
+        lv_label_set_text(wifi_network_label, "NETWORK: --");
+    }
+
+    lv_label_set_text(wifi_connect_button_label,
+                      connected ? "RECONNECT" : "CONNECT");
+    if (isRadioBusy()) {
+        lv_obj_add_state(wifi_connect_button, LV_STATE_DISABLED);
+    } else {
+        lv_obj_remove_state(wifi_connect_button, LV_STATE_DISABLED);
     }
 }
 
@@ -648,6 +734,20 @@ void stopTimeSyncRadio()
     }
     WiFi.disconnect(true, false);
     time_sync_state = TimeSyncState::Idle;
+    refreshWiFiScreen();
+}
+
+void beginNtpSyncOnConnectedWiFi()
+{
+    Serial.printf("Wi-Fi connected: %s\n", WiFi.SSID().c_str());
+    wifi_connection_result = WiFiConnectionResult::Connected;
+    ntp_sync_received = false;
+    time_sync_state = TimeSyncState::WaitingForNtp;
+    time_sync_state_started_ms = millis();
+    setTimeSyncStatus("SYNCING TIME", kAccentColor);
+    refreshTimeSyncScreen();
+    refreshWiFiScreen();
+    configTzTime(kTimeZone, kNtpServer1, kNtpServer2, kNtpServer3);
 }
 
 bool startCurrentWiFiNetwork()
@@ -668,6 +768,7 @@ bool startCurrentWiFiNetwork()
                      static_cast<unsigned>(kWiFiCredentialCount));
             setTimeSyncStatus(notification, kAccentColor);
             refreshTimeSyncScreen();
+            refreshWiFiScreen();
             Serial.printf("Connecting to Wi-Fi network %u of %u\n",
                           static_cast<unsigned>(wifi_credential_index + 1),
                           static_cast<unsigned>(kWiFiCredentialCount));
@@ -676,6 +777,83 @@ bool startCurrentWiFiNetwork()
         ++wifi_credential_index;
     }
     return false;
+}
+
+bool startCurrentWiFiConnection()
+{
+    while (wifi_connection_credential_index < kWiFiCredentialCount) {
+        const WiFiCredential &credential =
+            kWiFiCredentials[wifi_connection_credential_index];
+        if (credential.ssid != nullptr && credential.ssid[0] != '\0') {
+            WiFi.disconnect(false, false);
+            WiFi.begin(credential.ssid,
+                       credential.password == nullptr ? "" :
+                                                         credential.password);
+            wifi_connection_in_progress = true;
+            wifi_connection_started_ms = millis();
+            refreshWiFiScreen();
+            Serial.printf("Manual Wi-Fi connection %u of %u\n",
+                          static_cast<unsigned>(
+                              wifi_connection_credential_index + 1),
+                          static_cast<unsigned>(kWiFiCredentialCount));
+            return true;
+        }
+        ++wifi_connection_credential_index;
+    }
+    return false;
+}
+
+void failWiFiConnection()
+{
+    WiFi.disconnect(true, false);
+    wifi_connection_in_progress = false;
+    wifi_connection_result = WiFiConnectionResult::Failed;
+    wifi_retry_not_before_ms = millis() + kWiFiRetryIntervalMs;
+    refreshWiFiScreen();
+    refreshTimeSyncScreen();
+    Serial.println("Manual Wi-Fi connection failed");
+}
+
+void requestWiFiReconnect()
+{
+    if (isRadioBusy()) {
+        return;
+    }
+    if (kWiFiCredentialCount == 0) {
+        failWiFiConnection();
+        return;
+    }
+
+    WiFi.disconnect(true, false);
+    WiFi.mode(WIFI_STA);
+    WiFi.setAutoReconnect(false);
+    wifi_connection_result = WiFiConnectionResult::Unknown;
+    wifi_connection_credential_index = 0;
+    if (!startCurrentWiFiConnection()) {
+        failWiFiConnection();
+    }
+}
+
+void processWiFiConnection()
+{
+    if (!isWiFiConnectionBusy()) {
+        return;
+    }
+    if (WiFi.status() == WL_CONNECTED) {
+        wifi_connection_in_progress = false;
+        wifi_connection_result = WiFiConnectionResult::Connected;
+        wifi_retry_not_before_ms = 0;
+        refreshWiFiScreen();
+        refreshTimeSyncScreen();
+        Serial.printf("Manual Wi-Fi connected: %s\n", WiFi.SSID().c_str());
+        return;
+    }
+    if (millis() - wifi_connection_started_ms >= kWiFiConnectTimeoutMs) {
+        ++wifi_connection_credential_index;
+        if (!startCurrentWiFiConnection()) {
+            failWiFiConnection();
+        }
+    }
 }
 
 void failTimeSync(const char *reason)
@@ -692,7 +870,7 @@ void failTimeSync(const char *reason)
 
 void requestTimeSync(bool force)
 {
-    if (isTimeSyncBusy()) {
+    if (isRadioBusy()) {
         return;
     }
     if (!force && !automatic_time_sync_enabled) {
@@ -724,6 +902,10 @@ void requestTimeSync(bool force)
     }
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(false);
+    if (WiFi.status() == WL_CONNECTED) {
+        beginNtpSyncOnConnectedWiFi();
+        return;
+    }
     wifi_credential_index = 0;
     if (!startCurrentWiFiNetwork()) {
         failTimeSync("no usable Wi-Fi credentials");
@@ -769,13 +951,7 @@ void processTimeSync()
 
     case TimeSyncState::Connecting:
         if (WiFi.status() == WL_CONNECTED) {
-            Serial.printf("Wi-Fi connected: %s\n", WiFi.SSID().c_str());
-            ntp_sync_received = false;
-            time_sync_state = TimeSyncState::WaitingForNtp;
-            time_sync_state_started_ms = millis();
-            setTimeSyncStatus("SYNCING TIME", kAccentColor);
-            refreshTimeSyncScreen();
-            configTzTime(kTimeZone, kNtpServer1, kNtpServer2, kNtpServer3);
+            beginNtpSyncOnConnectedWiFi();
             return;
         }
         if (millis() - time_sync_state_started_ms >= kWiFiConnectTimeoutMs) {
@@ -1078,6 +1254,33 @@ void showTimeSyncScreen(lv_event_t *)
                         180, 0, false);
 }
 
+void wifiScreenEventCallback(lv_event_t *event)
+{
+    if (lv_event_get_code(event) == LV_EVENT_SCREEN_LOAD_START) {
+        last_activity_ms = millis();
+        refreshWiFiScreen();
+    }
+}
+
+void reconnectWiFiCallback(lv_event_t *)
+{
+    requestWiFiReconnect();
+    refreshWiFiScreen();
+}
+
+void showWiFiScreen(lv_event_t *)
+{
+    lv_screen_load_anim(wifi_screen, LV_SCR_LOAD_ANIM_MOVE_LEFT,
+                        180, 0, false);
+}
+
+void updateWiFiScreenStatus(lv_timer_t *)
+{
+    if (lv_screen_active() == wifi_screen) {
+        refreshWiFiScreen();
+    }
+}
+
 void settingsHubScreenEventCallback(lv_event_t *event)
 {
     if (lv_event_get_code(event) == LV_EVENT_SCREEN_LOAD_START) {
@@ -1178,22 +1381,24 @@ void createSettingsHubScreen()
     lv_label_set_text(title, "SETTINGS");
     lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(kAccentColor), 0);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 6);
 
     lv_obj_t *subtitle = lv_label_create(settings_hub_screen);
     lv_label_set_text(subtitle, "SELECT AN OPTION");
     lv_obj_set_style_text_font(subtitle, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(subtitle, lv_color_hex(kMutedColor), 0);
-    lv_obj_align(subtitle, LV_ALIGN_TOP_MID, 0, 38);
+    lv_obj_align(subtitle, LV_ALIGN_TOP_MID, 0, 30);
 
     createButton(settings_hub_screen, "DATE & TIME",
-                 20, 58, 200, 38, showDateTimeScreen);
+                 20, 44, 200, 34, showDateTimeScreen);
     createButton(settings_hub_screen, "BRIGHTNESS",
-                 20, 104, 200, 38, showBrightnessScreen);
+                 20, 82, 200, 34, showBrightnessScreen);
+    createButton(settings_hub_screen, "WI-FI",
+                 20, 120, 200, 34, showWiFiScreen);
     createButton(settings_hub_screen, "TIME SYNC",
-                 20, 150, 200, 38, showTimeSyncScreen);
+                 20, 158, 200, 34, showTimeSyncScreen);
     createButton(settings_hub_screen, "BACK",
-                 20, 198, 200, 30, showClockScreen);
+                 20, 202, 200, 28, showClockScreen);
 }
 
 void createDateTimeScreen()
@@ -1369,6 +1574,59 @@ void createTimeSyncScreen()
     refreshTimeSyncScreen();
 }
 
+void createWiFiScreen()
+{
+    wifi_screen = lv_obj_create(nullptr);
+    styleScreen(wifi_screen);
+    lv_obj_add_event_cb(wifi_screen, markUserActivity,
+                        LV_EVENT_PRESSED, nullptr);
+    lv_obj_add_event_cb(wifi_screen, wifiScreenEventCallback,
+                        LV_EVENT_SCREEN_LOAD_START, nullptr);
+
+    lv_obj_t *title = lv_label_create(wifi_screen);
+    lv_label_set_text(title, "WI-FI");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(kAccentColor), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 14);
+
+    wifi_status_label = lv_label_create(wifi_screen);
+    lv_label_set_text(wifi_status_label, "STATUS: OFF");
+    lv_obj_set_style_text_font(wifi_status_label, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(wifi_status_label,
+                                lv_color_hex(kMutedColor), 0);
+    lv_obj_align(wifi_status_label, LV_ALIGN_TOP_MID, 0, 54);
+
+    wifi_network_label = lv_label_create(wifi_screen);
+    lv_label_set_text(wifi_network_label, "NETWORK: --");
+    lv_obj_set_width(wifi_network_label, 210);
+    lv_label_set_long_mode(wifi_network_label, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_align(wifi_network_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(wifi_network_label,
+                               &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(wifi_network_label,
+                                lv_color_hex(kMutedColor), 0);
+    lv_obj_align(wifi_network_label, LV_ALIGN_TOP_MID, 0, 84);
+
+    lv_obj_t *power_note = lv_label_create(wifi_screen);
+    lv_label_set_text(power_note, "WI-FI STOPS IN SLEEP");
+    lv_obj_set_style_text_font(power_note, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(power_note, lv_color_hex(kMutedColor), 0);
+    lv_obj_align(power_note, LV_ALIGN_TOP_MID, 0, 112);
+
+    wifi_connect_button = createButton(wifi_screen, "CONNECT",
+                                       20, 142, 200, 42,
+                                       reconnectWiFiCallback);
+    wifi_connect_button_label = lv_obj_get_child(wifi_connect_button, 0);
+    lv_obj_set_style_bg_color(wifi_connect_button,
+                              lv_color_hex(kAccentColor), 0);
+    lv_obj_set_style_text_color(wifi_connect_button_label,
+                                lv_color_hex(kBackgroundColor), 0);
+
+    createButton(wifi_screen, "BACK", 20, 202, 200, 30,
+                 returnToSettingsHubScreen);
+    refreshWiFiScreen();
+}
+
 void createWakeOverlay()
 {
     wake_overlay = lv_obj_create(lv_layer_top());
@@ -1401,11 +1659,13 @@ void setup()
     createDateTimeScreen();
     createBrightnessScreen();
     createTimeSyncScreen();
+    createWiFiScreen();
     createWakeOverlay();
     syncClockFromRtc();
     updateBatteryStatus(nullptr);
     lv_timer_create(updateClock, 250, nullptr);
     lv_timer_create(updateBatteryStatus, kBatteryUpdateIntervalMs, nullptr);
+    lv_timer_create(updateWiFiScreenStatus, 1000, nullptr);
 
     instance.onEvent(deviceEventCallback, POWER_EVENT, nullptr);
     sntp_set_time_sync_notification_cb(ntpTimeAvailableCallback);
@@ -1418,6 +1678,7 @@ void loop()
 {
     instance.loop();
     lv_timer_handler();
+    processWiFiConnection();
     processTimeSync();
     updateTimeSyncNotification();
 
@@ -1425,7 +1686,7 @@ void loop()
         turnScreenOff();
     }
 
-    if (!screen_on && !isTimeSyncBusy() &&
+    if (!screen_on && !isRadioBusy() &&
         millis() - screen_off_ms >= kLightSleepDelayMs) {
         enterLightSleep();
     }
