@@ -159,6 +159,33 @@ Light Sleep, wake the display and run the upload command again.
 
 ### Clock and power behavior
 
+#### Clock display, screen-off, and wake flow
+
+```mermaid
+flowchart TD
+    BOOT["Boot firmware"] --> CLOCK["Show clock screen"]
+    CLOCK --> REFRESH["Read RTC and refresh time, date, and battery"]
+    REFRESH --> DUE["Check whether automatic NTP sync is due"]
+    DUE --> CLOCK
+
+    CLOCK -- "Clock timer" --> TICK["Update display when the second changes"]
+    TICK --> CLOCK
+    CLOCK -- "Touch" --> ACTIVE["Reset 15-second inactivity timer"]
+    ACTIVE --> CLOCK
+    CLOCK -- "SET" --> HUB["Open settings hub"]
+    HUB -- "BACK" --> CLOCK
+
+    CLOCK -- "15 seconds without input" --> OFF["Turn display off"]
+    OFF --> READY{"5 seconds elapsed and radio idle?"}
+    READY -- "No" --> OFF
+    READY -- "Yes" --> SLEEP["Enter Light Sleep"]
+    SLEEP --> WAKE{"Wake source"}
+    WAKE -- "Touch or power button" --> RESTORE["Turn display on and refresh RTC and battery"]
+    RESTORE --> CLOCK
+    WAKE -- "Automatic sync timer" --> BG["Run due synchronization with display off"]
+    BG --> OFF
+```
+
 - Use `SET` on the clock screen to open the settings hub.
 - Select `DATE & TIME`, `BRIGHTNESS`, `WI-FI`, or `TIME SYNC` in the hub.
   `SAVE`, `CANCEL`, and `BACK` return to the hub; the hub's `BACK` returns to
@@ -174,6 +201,43 @@ Light Sleep, wake the display and run the upload command again.
 - The wake touch is consumed so it does not accidentally activate a control.
 - RTC time and battery state are refreshed after wake.
 - A compact battery or power status remains visible at the upper left.
+
+### Settings flow
+
+```mermaid
+flowchart TD
+    CLOCK["Clock screen: SET"] --> HUB["SETTINGS hub"]
+
+    HUB -- "DATE & TIME" --> DT0["Load current RTC values"]
+    DT0 --> DT1["Select a field and adjust with plus or minus"]
+    DT1 --> DT2{"Action"}
+    DT2 -- "SAVE" --> DT3["Write date and time to RTC"]
+    DT2 -- "CANCEL" --> HUB
+    DT3 --> HUB
+
+    HUB -- "BRIGHTNESS" --> BR0["Load saved brightness"]
+    BR0 --> BR1["Preview slider or plus and minus changes"]
+    BR1 --> BR2{"Action"}
+    BR2 -- "SAVE" --> BR3["Store brightness in NVS"]
+    BR2 -- "CANCEL" --> BR4["Restore previous brightness"]
+    BR3 --> HUB
+    BR4 --> HUB
+
+    HUB -- "WI-FI" --> WF0["Show status and SSID"]
+    WF0 --> WF1["CONNECT, RECONNECT, or DISCONNECT"]
+    WF1 --> WF0
+    WF0 -- "BACK" --> HUB
+
+    HUB -- "TIME SYNC" --> TS0["Show auto-sync, result, and last successful time"]
+    TS0 --> TS1["Toggle AUTO SYNC or select SYNC NOW"]
+    TS1 --> TS0
+    TS0 -- "BACK" --> HUB
+
+    HUB -- "BACK" --> CLOCK
+    HUB -. "Any settings screen: 60 seconds without input" .-> OFF["Turn display off"]
+    OFF --> SLEEP["Enter Light Sleep after 5 seconds when radio is idle"]
+    SLEEP -- "Touch or power button" --> SAME["Wake on the same active settings screen"]
+```
 
 ### Wi-Fi and NTP behavior
 
@@ -400,6 +464,33 @@ pio run -e twatchs3_custom -t upload --upload-port /dev/cu.usbmodemXXXXXX
 
 ### 時計・省電力動作
 
+#### 時計表示・消灯・復帰フロー
+
+```mermaid
+flowchart TD
+    BOOT["ファームウェア起動"] --> CLOCK["時計画面を表示"]
+    CLOCK --> REFRESH["RTCを読み、時刻・日付・バッテリーを更新"]
+    REFRESH --> DUE["自動NTP同期の期限を確認"]
+    DUE --> CLOCK
+
+    CLOCK -- "時計タイマー" --> TICK["秒が変化したとき表示を更新"]
+    TICK --> CLOCK
+    CLOCK -- "タッチ" --> ACTIVE["15秒の無操作タイマーをリセット"]
+    ACTIVE --> CLOCK
+    CLOCK -- "SET" --> HUB["設定ハブを開く"]
+    HUB -- "BACK" --> CLOCK
+
+    CLOCK -- "15秒間操作なし" --> OFF["画面を消灯"]
+    OFF --> READY{"5秒経過して通信処理も停止?"}
+    READY -- "いいえ" --> OFF
+    READY -- "はい" --> SLEEP["Light Sleepへ移行"]
+    SLEEP --> WAKE{"復帰要因"}
+    WAKE -- "タッチまたは電源ボタン" --> RESTORE["画面を点灯しRTCとバッテリーを更新"]
+    RESTORE --> CLOCK
+    WAKE -- "自動同期タイマー" --> BG["画面を点灯せず期限到来済み同期を実行"]
+    BG --> OFF
+```
+
 - 時計画面の`SET`から設定ハブを開きます。
 - ハブで`DATE & TIME`、`BRIGHTNESS`、`WI-FI`、`TIME SYNC`のいずれかを
   選択します。`SAVE`、`CANCEL`、`BACK`はハブへ戻り、ハブの`BACK`は
@@ -415,6 +506,43 @@ pio run -e twatchs3_custom -t upload --upload-port /dev/cu.usbmodemXXXXXX
 - 復帰に使ったタッチは吸収され、背後のボタンを誤操作しません。
 - 復帰時にRTC時刻とバッテリー状態を更新します。
 - 左上には簡潔なバッテリー・給電状態を常時表示します。
+
+### 設定画面フロー
+
+```mermaid
+flowchart TD
+    CLOCK["時計画面: SET"] --> HUB["SETTINGSハブ"]
+
+    HUB -- "DATE & TIME" --> DT0["現在のRTC値を読み込む"]
+    DT0 --> DT1["項目を選択しプラス・マイナスで調整"]
+    DT1 --> DT2{"操作"}
+    DT2 -- "SAVE" --> DT3["日付・時刻をRTCへ書き込む"]
+    DT2 -- "CANCEL" --> HUB
+    DT3 --> HUB
+
+    HUB -- "BRIGHTNESS" --> BR0["保存済みの明るさを読み込む"]
+    BR0 --> BR1["スライダーまたはプラス・マイナスを即時反映"]
+    BR1 --> BR2{"操作"}
+    BR2 -- "SAVE" --> BR3["明るさをNVSへ保存"]
+    BR2 -- "CANCEL" --> BR4["変更前の明るさへ戻す"]
+    BR3 --> HUB
+    BR4 --> HUB
+
+    HUB -- "WI-FI" --> WF0["接続状態とSSIDを表示"]
+    WF0 --> WF1["CONNECT・RECONNECT・DISCONNECT"]
+    WF1 --> WF0
+    WF0 -- "BACK" --> HUB
+
+    HUB -- "TIME SYNC" --> TS0["自動同期・結果・最終成功時刻を表示"]
+    TS0 --> TS1["AUTO SYNC切替またはSYNC NOW"]
+    TS1 --> TS0
+    TS0 -- "BACK" --> HUB
+
+    HUB -- "BACK" --> CLOCK
+    HUB -. "全設定画面: 60秒間操作なし" .-> OFF["画面を消灯"]
+    OFF --> SLEEP["通信停止後、5秒でLight Sleepへ移行"]
+    SLEEP -- "タッチまたは電源ボタン" --> SAME["表示していた設定画面へ復帰"]
+```
 
 ### Wi-Fi・NTP動作
 
