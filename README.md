@@ -26,7 +26,7 @@ UTC+9).
 | Display timeout | Implemented and device-tested | 15-second clock timeout, 60-second settings timeout, and guarded touch wake |
 | Light Sleep | Implemented and device-tested | Sleep 5 seconds after display-off and wake by touch or power button |
 | Battery status | Implemented and device-tested | Compact always-visible upper-left battery, charging, USB-power, and low-battery state |
-| Wi-Fi and NTP | Implemented; basic connection device-tested | Wi-Fi status, reconnect/disconnect controls, multiple fixed networks, persistent automatic synchronization, manual `SYNC NOW`, RTC update, and ownership-aware radio shutdown. The latest connection-lifetime behavior needs device verification |
+| Wi-Fi and NTP | Implemented and device-tested | Wi-Fi status, reconnect/disconnect controls, multiple fixed networks, persistent automatic synchronization, manual `SYNC NOW`, RTC update, and ownership-aware radio shutdown |
 | Brightness setting | Implemented and device-tested | Separate live-preview screen with `SAVE`/`CANCEL` and NVS persistence |
 | Settings hub | Implemented and build-tested | A single clock-screen `SET` button opens independent `DATE & TIME`, `BRIGHTNESS`, `WI-FI`, and `TIME SYNC` screens through a central hub |
 | Documentation | Implemented | Project-specific English and Japanese README |
@@ -39,11 +39,11 @@ UTC+9).
 - [x] Deploy the current `t-watch-s3-custom` HEAD to the watch.
 - [x] Verify connection to a configured 2.4 GHz Wi-Fi network.
 - [x] Verify touch/power wake after Light Sleep.
-- [ ] Verify multi-network Wi-Fi selection, NTP-to-RTC synchronization, and
+- [x] Verify multi-network Wi-Fi selection, NTP-to-RTC synchronization, and
   shutdown of an NTP-owned connection.
-- [ ] Verify Wi-Fi status, SSID display, manual connect/reconnect, and reuse of
+- [x] Verify Wi-Fi status, SSID display, manual connect/reconnect, and reuse of
   that connection by `SYNC NOW` without disconnecting it afterward.
-- [ ] Verify explicit `DISCONNECT` and automatic disconnect on Light Sleep.
+- [x] Verify explicit `DISCONNECT` and automatic disconnect on Light Sleep.
 - [x] Verify brightness persistence after reboot.
 - [x] Verify the upper-left battery status.
 - [ ] Verify the fixed clock layout and timed bottom notifications.
@@ -334,7 +334,7 @@ flowchart TD
 | 画面消灯 | 実装・実機確認済み | 時計15秒、設定60秒のタイムアウトと、誤操作を防ぐタッチ復帰 |
 | Light Sleep | 実装・実機確認済み | 消灯5秒後に移行し、タッチまたは電源ボタンで復帰 |
 | バッテリー状態 | 実装・実機確認済み | 左上に常時表示する簡潔な残量、充電、USB給電、低残量表示 |
-| Wi-Fi・NTP | 実装済み、基本接続は実機確認済み | Wi-Fi状態、再接続・切断操作、複数固定ネットワーク、自動同期の永続化、手動`SYNC NOW`、RTC更新、接続元に応じたWi-Fi停止。最新の接続維持動作は実機確認が必要 |
+| Wi-Fi・NTP | 実装・実機確認済み | Wi-Fi状態、再接続・切断操作、複数固定ネットワーク、自動同期の永続化、手動`SYNC NOW`、RTC更新、接続元に応じたWi-Fi停止 |
 | 明るさ設定 | 実装・実機確認済み | 即時プレビュー、`SAVE`/`CANCEL`、NVS永続化を備えた独立画面 |
 | 設定ハブ | 実装・ビルド確認済み | 時計画面の単一`SET`ボタンから、中央のハブを経由して独立した`DATE & TIME`、`BRIGHTNESS`、`WI-FI`、`TIME SYNC`画面を開く構成 |
 | ドキュメント | 実装済み | このプロジェクト専用の英語・日本語README |
@@ -347,10 +347,10 @@ flowchart TD
 - [x] 現在の`t-watch-s3-custom` HEADを実機へデプロイする。
 - [x] 設定した2.4 GHz Wi-Fiネットワークへの接続を確認する。
 - [x] Light Sleep後のタッチ・電源ボタン復帰を確認する。
-- [ ] 複数Wi-Fiの選択、NTPからRTCへの同期、NTP自身が開始した接続の停止を確認する。
-- [ ] Wi-Fi状態、SSID表示、手動接続・再接続、その接続を`SYNC NOW`が
+- [x] 複数Wi-Fiの選択、NTPからRTCへの同期、NTP自身が開始した接続の停止を確認する。
+- [x] Wi-Fi状態、SSID表示、手動接続・再接続、その接続を`SYNC NOW`が
   再利用し、同期後も維持することを確認する。
-- [ ] 明示的な`DISCONNECT`とLight Sleep移行時の自動切断を確認する。
+- [x] 明示的な`DISCONNECT`とLight Sleep移行時の自動切断を確認する。
 - [x] 再起動後も明るさ設定が保持されることを確認する。
 - [x] 左上のバッテリー状態を確認する。
 - [ ] 固定幅の時計表示と時間制御された下段通知を確認する。
