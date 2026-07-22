@@ -25,17 +25,18 @@ UTC+9).
 | RTC | Implemented and device-tested | RTC refresh whenever the clock face appears and a separate manual date/time screen |
 | Display timeout | Implemented and device-tested | 15-second clock timeout, 60-second settings timeout, and guarded touch wake |
 | Light Sleep | Implemented and device-tested | Sleep 5 seconds after display-off and wake by touch or power button |
+| Deploy mode | Implemented and build-tested; device verification pending | Temporary `POWER & DISPLAY` setting that keeps the display and CPU awake for USB uploads and resets after reboot |
 | Battery status | Implemented and device-tested | Compact always-visible upper-left battery, charging, USB-power, and low-battery state |
 | Wi-Fi and NTP | Implemented and device-tested | Wi-Fi status, reconnect/disconnect controls, multiple fixed networks, persistent automatic synchronization, manual `SYNC NOW`, RTC update, and ownership-aware radio shutdown |
 | Brightness setting | Implemented and device-tested | Separate live-preview screen with `SAVE`/`CANCEL` and NVS persistence |
-| Settings hub | Implemented and build-tested | A single clock-screen `SET` button opens independent `DATE & TIME`, `BRIGHTNESS`, `WI-FI`, and `TIME SYNC` screens through a central hub |
+| Settings hub | Implemented and build-tested | The clock-screen `SET` button opens `DATE & TIME`, `POWER & DISPLAY`, `BRIGHTNESS`, and a grouped `WI-FI & NTP` submenu |
 | Documentation | Implemented | Project-specific English and Japanese README |
 
 ### Roadmap
 
 #### Current milestone: settings and deployment
 
-- [ ] DEPLOY MODE to keep the display and CPU awake during firmware upload
+- [x] DEPLOY MODE to keep the display and CPU awake during firmware upload
 - [ ] Configurable clock-screen timeout
 - [ ] Configurable settings-screen timeout
 - [ ] Configurable delay before Light Sleep
@@ -156,7 +157,7 @@ flowchart TD
     CLOCK -- "SET" --> HUB["Open settings hub"]
     HUB -- "BACK" --> CLOCK
 
-    CLOCK -- "15 seconds without input" --> OFF["Turn display off"]
+    CLOCK -- "15 seconds without input and DEPLOY MODE is off" --> OFF["Turn display off"]
     OFF --> READY{"5 seconds elapsed and radio idle?"}
     READY -- "No" --> OFF
     READY -- "Yes" --> SLEEP["Enter Light Sleep"]
@@ -168,9 +169,13 @@ flowchart TD
 ```
 
 - Use `SET` on the clock screen to open the settings hub.
-- Select `DATE & TIME`, `BRIGHTNESS`, `WI-FI`, or `TIME SYNC` in the hub.
-  `SAVE`, `CANCEL`, and `BACK` return to the hub; the hub's `BACK` returns to
-  the clock.
+- Select `DATE & TIME`, `POWER & DISPLAY`, `BRIGHTNESS`, or `WI-FI & NTP` in
+  the hub. The `WI-FI & NTP` submenu opens the existing `WI-FI` and
+  `TIME SYNC` screens. `SAVE`, `CANCEL`, and `BACK` return through the
+  corresponding parent screen; the hub's `BACK` returns to the clock.
+- `POWER & DISPLAY` currently provides DEPLOY MODE. While enabled, the display
+  and CPU stay awake, and a `DEPLOY` indicator remains visible on the clock.
+  Disable it to restore normal power saving; a reboot always clears the mode.
 - Brightness changes are previewed immediately; `SAVE` persists the value to
   NVS and `CANCEL` restores the previous value.
 - The clock screen turns off after 15 seconds of inactivity.
@@ -196,6 +201,14 @@ flowchart TD
     DT2 -- "CANCEL" --> HUB
     DT3 --> HUB
 
+    HUB -- "POWER & DISPLAY" --> PD0["Show DEPLOY MODE state"]
+    PD0 --> PD1["Toggle DEPLOY MODE"]
+    PD1 -- "ON" --> PD2["Keep display and CPU awake"]
+    PD1 -- "OFF" --> PD3["Restore normal power saving"]
+    PD2 --> PD0
+    PD3 --> PD0
+    PD0 -- "BACK" --> HUB
+
     HUB -- "BRIGHTNESS" --> BR0["Load saved brightness"]
     BR0 --> BR1["Preview slider or plus and minus changes"]
     BR1 --> BR2{"Action"}
@@ -204,18 +217,20 @@ flowchart TD
     BR3 --> HUB
     BR4 --> HUB
 
-    HUB -- "WI-FI" --> WF0["Show status and SSID"]
+    HUB -- "WI-FI & NTP" --> WN0["Select WI-FI or TIME SYNC"]
+    WN0 -- "WI-FI" --> WF0["Show status and SSID"]
     WF0 --> WF1["CONNECT, RECONNECT, or DISCONNECT"]
     WF1 --> WF0
-    WF0 -- "BACK" --> HUB
+    WF0 -- "BACK" --> WN0
 
-    HUB -- "TIME SYNC" --> TS0["Show auto-sync, result, and last successful time"]
+    WN0 -- "TIME SYNC" --> TS0["Show auto-sync, result, and last successful time"]
     TS0 --> TS1["Toggle AUTO SYNC or select SYNC NOW"]
     TS1 --> TS0
-    TS0 -- "BACK" --> HUB
+    TS0 -- "BACK" --> WN0
+    WN0 -- "BACK" --> HUB
 
     HUB -- "BACK" --> CLOCK
-    HUB -. "Any settings screen: 60 seconds without input" .-> OFF["Turn display off"]
+    HUB -. "Any settings screen: 60 seconds without input and DEPLOY MODE is off" .-> OFF["Turn display off"]
     OFF --> SLEEP["Enter Light Sleep after 5 seconds when radio is idle"]
     SLEEP -- "Touch or power button" --> SAME["Wake on the same active settings screen"]
 ```
@@ -314,17 +329,18 @@ flowchart TD
 | RTC | 実装・実機確認済み | 時計画面表示時のRTC再読込と、独立した日付・時刻手動設定画面 |
 | 画面消灯 | 実装・実機確認済み | 時計15秒、設定60秒のタイムアウトと、誤操作を防ぐタッチ復帰 |
 | Light Sleep | 実装・実機確認済み | 消灯5秒後に移行し、タッチまたは電源ボタンで復帰 |
+| デプロイモード | 実装・ビルド確認済み、実機確認待ち | USB書き込み用に画面とCPUを起動状態に保つ一時的な`POWER & DISPLAY`設定。再起動時は解除 |
 | バッテリー状態 | 実装・実機確認済み | 左上に常時表示する簡潔な残量、充電、USB給電、低残量表示 |
 | Wi-Fi・NTP | 実装・実機確認済み | Wi-Fi状態、再接続・切断操作、複数固定ネットワーク、自動同期の永続化、手動`SYNC NOW`、RTC更新、接続元に応じたWi-Fi停止 |
 | 明るさ設定 | 実装・実機確認済み | 即時プレビュー、`SAVE`/`CANCEL`、NVS永続化を備えた独立画面 |
-| 設定ハブ | 実装・ビルド確認済み | 時計画面の単一`SET`ボタンから、中央のハブを経由して独立した`DATE & TIME`、`BRIGHTNESS`、`WI-FI`、`TIME SYNC`画面を開く構成 |
+| 設定ハブ | 実装・ビルド確認済み | 時計画面の`SET`から`DATE & TIME`、`POWER & DISPLAY`、`BRIGHTNESS`、および`WI-FI & NTP`サブメニューを開く構成 |
 | ドキュメント | 実装済み | このプロジェクト専用の英語・日本語README |
 
 ### ロードマップ
 
 #### 現在のマイルストーン：設定とデプロイ
 
-- [ ] DEPLOY MODEへの切替（書き込み中は画面消灯とLight Sleepを抑止）
+- [x] DEPLOY MODEへの切替（書き込み中は画面消灯とLight Sleepを抑止）
 - [ ] 時計画面の消灯時間設定
 - [ ] 設定画面の消灯時間設定
 - [ ] Light Sleepまでの待機時間設定
@@ -445,7 +461,7 @@ flowchart TD
     CLOCK -- "SET" --> HUB["設定ハブを開く"]
     HUB -- "BACK" --> CLOCK
 
-    CLOCK -- "15秒間操作なし" --> OFF["画面を消灯"]
+    CLOCK -- "15秒間操作なし、かつDEPLOY MODEが無効" --> OFF["画面を消灯"]
     OFF --> READY{"5秒経過して通信処理も停止?"}
     READY -- "いいえ" --> OFF
     READY -- "はい" --> SLEEP["Light Sleepへ移行"]
@@ -457,9 +473,13 @@ flowchart TD
 ```
 
 - 時計画面の`SET`から設定ハブを開きます。
-- ハブで`DATE & TIME`、`BRIGHTNESS`、`WI-FI`、`TIME SYNC`のいずれかを
-  選択します。`SAVE`、`CANCEL`、`BACK`はハブへ戻り、ハブの`BACK`は
-  時計画面へ戻ります。
+- ハブで`DATE & TIME`、`POWER & DISPLAY`、`BRIGHTNESS`、`WI-FI & NTP`の
+  いずれかを選択します。`WI-FI & NTP`サブメニューから、既存の`WI-FI`画面と
+  `TIME SYNC`画面へ移動します。`SAVE`、`CANCEL`、`BACK`は対応する親画面へ戻り、
+  ハブの`BACK`は時計画面へ戻ります。
+- `POWER & DISPLAY`では、現時点でDEPLOY MODEを切り替えられます。有効中は
+  画面とCPUを起動状態に保ち、時計画面へ`DEPLOY`を表示します。解除すると通常の
+  省電力動作へ戻り、再起動した場合も必ず解除されます。
 - 明るさは操作中に即時反映され、`SAVE`でNVSへ保存、`CANCEL`で変更前の値へ
   戻ります。
 - 時計画面は15秒間操作がないと消灯します。
@@ -485,6 +505,14 @@ flowchart TD
     DT2 -- "CANCEL" --> HUB
     DT3 --> HUB
 
+    HUB -- "POWER & DISPLAY" --> PD0["DEPLOY MODEの状態を表示"]
+    PD0 --> PD1["DEPLOY MODEを切り替える"]
+    PD1 -- "ON" --> PD2["画面とCPUを起動状態に保つ"]
+    PD1 -- "OFF" --> PD3["通常の省電力動作へ戻す"]
+    PD2 --> PD0
+    PD3 --> PD0
+    PD0 -- "BACK" --> HUB
+
     HUB -- "BRIGHTNESS" --> BR0["保存済みの明るさを読み込む"]
     BR0 --> BR1["スライダーまたはプラス・マイナスを即時反映"]
     BR1 --> BR2{"操作"}
@@ -493,18 +521,20 @@ flowchart TD
     BR3 --> HUB
     BR4 --> HUB
 
-    HUB -- "WI-FI" --> WF0["接続状態とSSIDを表示"]
+    HUB -- "WI-FI & NTP" --> WN0["WI-FIまたはTIME SYNCを選択"]
+    WN0 -- "WI-FI" --> WF0["接続状態とSSIDを表示"]
     WF0 --> WF1["CONNECT・RECONNECT・DISCONNECT"]
     WF1 --> WF0
-    WF0 -- "BACK" --> HUB
+    WF0 -- "BACK" --> WN0
 
-    HUB -- "TIME SYNC" --> TS0["自動同期・結果・最終成功時刻を表示"]
+    WN0 -- "TIME SYNC" --> TS0["自動同期・結果・最終成功時刻を表示"]
     TS0 --> TS1["AUTO SYNC切替またはSYNC NOW"]
     TS1 --> TS0
-    TS0 -- "BACK" --> HUB
+    TS0 -- "BACK" --> WN0
+    WN0 -- "BACK" --> HUB
 
     HUB -- "BACK" --> CLOCK
-    HUB -. "全設定画面: 60秒間操作なし" .-> OFF["画面を消灯"]
+    HUB -. "全設定画面: 60秒間操作なし、かつDEPLOY MODEが無効" .-> OFF["画面を消灯"]
     OFF --> SLEEP["通信停止後、5秒でLight Sleepへ移行"]
     SLEEP -- "タッチまたは電源ボタン" --> SAME["表示していた設定画面へ復帰"]
 ```

@@ -95,6 +95,8 @@ const char *const kFieldNames[] = {
 
 lv_obj_t *clock_screen;
 lv_obj_t *settings_hub_screen;
+lv_obj_t *power_display_screen;
+lv_obj_t *wifi_ntp_screen;
 lv_obj_t *date_time_screen;
 lv_obj_t *brightness_screen;
 lv_obj_t *time_sync_screen;
@@ -105,6 +107,9 @@ lv_obj_t *second_label;
 lv_obj_t *weekday_label;
 lv_obj_t *date_label;
 lv_obj_t *battery_label;
+lv_obj_t *deploy_mode_clock_label;
+lv_obj_t *deploy_mode_button_label;
+lv_obj_t *deploy_mode_status_label;
 lv_obj_t *time_sync_label;
 lv_obj_t *settings_status_label;
 lv_obj_t *brightness_slider;
@@ -134,6 +139,7 @@ int last_second = -1;
 uint32_t last_activity_ms = 0;
 uint32_t screen_off_ms = 0;
 bool screen_on = true;
+bool deploy_mode_enabled = false;
 uint8_t active_brightness = kDefaultBrightness;
 uint8_t pending_brightness = kDefaultBrightness;
 TimeSyncState time_sync_state = TimeSyncState::Idle;
@@ -161,6 +167,7 @@ bool isWiFiConnectionBusy();
 bool isRadioBusy();
 void refreshTimeSyncScreen();
 void refreshWiFiScreen();
+void refreshPowerDisplayScreen();
 uint64_t nextAutomaticSyncWakeupUs();
 
 bool isValidDateTime(const struct tm &timeinfo)
@@ -1117,10 +1124,63 @@ void showSettingsHubScreen(lv_event_t *)
                         180, 0, false);
 }
 
+void showPowerDisplayScreen(lv_event_t *)
+{
+    lv_screen_load_anim(power_display_screen, LV_SCR_LOAD_ANIM_MOVE_LEFT,
+                        180, 0, false);
+}
+
+void showWiFiNtpScreen(lv_event_t *)
+{
+    lv_screen_load_anim(wifi_ntp_screen, LV_SCR_LOAD_ANIM_MOVE_LEFT,
+                        180, 0, false);
+}
+
 void returnToSettingsHubScreen(lv_event_t *)
 {
     lv_screen_load_anim(settings_hub_screen, LV_SCR_LOAD_ANIM_MOVE_RIGHT,
                         180, 0, false);
+}
+
+void returnToWiFiNtpScreen(lv_event_t *)
+{
+    lv_screen_load_anim(wifi_ntp_screen, LV_SCR_LOAD_ANIM_MOVE_RIGHT,
+                        180, 0, false);
+}
+
+void refreshPowerDisplayScreen()
+{
+    lv_label_set_text(deploy_mode_button_label,
+                      deploy_mode_enabled
+                          ? "DEPLOY MODE: ON"
+                          : "DEPLOY MODE: OFF");
+    lv_label_set_text(deploy_mode_status_label,
+                      deploy_mode_enabled
+                          ? "SCREEN AND CPU STAY AWAKE"
+                          : "NORMAL POWER SAVING ACTIVE");
+
+    if (deploy_mode_enabled) {
+        lv_obj_remove_flag(deploy_mode_clock_label, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(deploy_mode_clock_label, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+void toggleDeployModeCallback(lv_event_t *)
+{
+    deploy_mode_enabled = !deploy_mode_enabled;
+    last_activity_ms = millis();
+    refreshPowerDisplayScreen();
+    Serial.printf("Deploy mode: %s\n",
+                  deploy_mode_enabled ? "enabled" : "disabled");
+}
+
+void powerDisplayScreenEventCallback(lv_event_t *event)
+{
+    if (lv_event_get_code(event) == LV_EVENT_SCREEN_LOAD_START) {
+        last_activity_ms = millis();
+        refreshPowerDisplayScreen();
+    }
 }
 
 void updateBrightnessControls()
@@ -1354,6 +1414,15 @@ void createClockScreen()
     lv_obj_set_style_text_color(battery_label, lv_color_hex(kMutedColor), 0);
     lv_obj_align(battery_label, LV_ALIGN_TOP_LEFT, 18, 24);
 
+    deploy_mode_clock_label = lv_label_create(clock_screen);
+    lv_label_set_text(deploy_mode_clock_label, "DEPLOY");
+    lv_obj_set_style_text_font(deploy_mode_clock_label,
+                               &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(deploy_mode_clock_label,
+                                lv_color_hex(kAccentColor), 0);
+    lv_obj_align(deploy_mode_clock_label, LV_ALIGN_TOP_MID, 0, 24);
+    lv_obj_add_flag(deploy_mode_clock_label, LV_OBJ_FLAG_HIDDEN);
+
     hour_label = createClockTimeLabel("--", -72, 60);
     createClockTimeLabel(":", -36, 12);
     minute_label = createClockTimeLabel("--", 0, 60);
@@ -1418,14 +1487,88 @@ void createSettingsHubScreen()
 
     createButton(settings_hub_screen, "DATE & TIME",
                  20, 44, 200, 34, showDateTimeScreen);
+    createButton(settings_hub_screen, "POWER & DISPLAY",
+                 20, 82, 200, 34, showPowerDisplayScreen);
     createButton(settings_hub_screen, "BRIGHTNESS",
-                 20, 82, 200, 34, showBrightnessScreen);
-    createButton(settings_hub_screen, "WI-FI",
-                 20, 120, 200, 34, showWiFiScreen);
-    createButton(settings_hub_screen, "TIME SYNC",
-                 20, 158, 200, 34, showTimeSyncScreen);
+                 20, 120, 200, 34, showBrightnessScreen);
+    createButton(settings_hub_screen, "WI-FI & NTP",
+                 20, 158, 200, 34, showWiFiNtpScreen);
     createButton(settings_hub_screen, "BACK",
                  20, 202, 200, 28, showClockScreen);
+}
+
+void createPowerDisplayScreen()
+{
+    power_display_screen = lv_obj_create(nullptr);
+    styleScreen(power_display_screen);
+    lv_obj_add_event_cb(power_display_screen, markUserActivity,
+                        LV_EVENT_PRESSED, nullptr);
+    lv_obj_add_event_cb(power_display_screen,
+                        powerDisplayScreenEventCallback,
+                        LV_EVENT_SCREEN_LOAD_START, nullptr);
+
+    lv_obj_t *title = lv_label_create(power_display_screen);
+    lv_label_set_text(title, "POWER & DISPLAY");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(kAccentColor), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 14);
+
+    lv_obj_t *description = lv_label_create(power_display_screen);
+    lv_label_set_text(description,
+                      "KEEP THE DISPLAY AND CPU AWAKE\nFOR USB UPLOADS");
+    lv_obj_set_width(description, 210);
+    lv_obj_set_style_text_align(description, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(description, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(description, lv_color_hex(kMutedColor), 0);
+    lv_obj_align(description, LV_ALIGN_TOP_MID, 0, 54);
+
+    lv_obj_t *deploy_mode_button = createButton(
+        power_display_screen, "DEPLOY MODE: OFF",
+        20, 102, 200, 44, toggleDeployModeCallback);
+    deploy_mode_button_label = lv_obj_get_child(deploy_mode_button, 0);
+
+    deploy_mode_status_label = lv_label_create(power_display_screen);
+    lv_label_set_text(deploy_mode_status_label,
+                      "NORMAL POWER SAVING ACTIVE");
+    lv_obj_set_width(deploy_mode_status_label, 220);
+    lv_obj_set_style_text_align(deploy_mode_status_label,
+                                LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(deploy_mode_status_label,
+                               &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(deploy_mode_status_label,
+                                lv_color_hex(kMutedColor), 0);
+    lv_obj_align(deploy_mode_status_label, LV_ALIGN_TOP_MID, 0, 164);
+
+    createButton(power_display_screen, "BACK", 20, 202, 200, 30,
+                 returnToSettingsHubScreen);
+    refreshPowerDisplayScreen();
+}
+
+void createWiFiNtpScreen()
+{
+    wifi_ntp_screen = lv_obj_create(nullptr);
+    styleScreen(wifi_ntp_screen);
+    lv_obj_add_event_cb(wifi_ntp_screen, markUserActivity,
+                        LV_EVENT_PRESSED, nullptr);
+
+    lv_obj_t *title = lv_label_create(wifi_ntp_screen);
+    lv_label_set_text(title, "WI-FI & NTP");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(kAccentColor), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 14);
+
+    lv_obj_t *description = lv_label_create(wifi_ntp_screen);
+    lv_label_set_text(description, "CONNECTION AND TIME SYNC");
+    lv_obj_set_style_text_font(description, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(description, lv_color_hex(kMutedColor), 0);
+    lv_obj_align(description, LV_ALIGN_TOP_MID, 0, 46);
+
+    createButton(wifi_ntp_screen, "WI-FI",
+                 20, 78, 200, 44, showWiFiScreen);
+    createButton(wifi_ntp_screen, "TIME SYNC",
+                 20, 134, 200, 44, showTimeSyncScreen);
+    createButton(wifi_ntp_screen, "BACK",
+                 20, 202, 200, 30, returnToSettingsHubScreen);
 }
 
 void createDateTimeScreen()
@@ -1597,7 +1740,7 @@ void createTimeSyncScreen()
                                 lv_color_hex(kBackgroundColor), 0);
 
     createButton(time_sync_screen, "BACK", 20, 202, 200, 30,
-                 returnToSettingsHubScreen);
+                 returnToWiFiNtpScreen);
     refreshTimeSyncScreen();
 }
 
@@ -1654,7 +1797,7 @@ void createWiFiScreen()
                                           disconnectWiFiCallback);
 
     createButton(wifi_screen, "BACK", 20, 202, 200, 30,
-                 returnToSettingsHubScreen);
+                 returnToWiFiNtpScreen);
     refreshWiFiScreen();
 }
 
@@ -1687,6 +1830,8 @@ void setup()
 
     createClockScreen();
     createSettingsHubScreen();
+    createPowerDisplayScreen();
+    createWiFiNtpScreen();
     createDateTimeScreen();
     createBrightnessScreen();
     createTimeSyncScreen();
@@ -1713,11 +1858,12 @@ void loop()
     processTimeSync();
     updateTimeSyncNotification();
 
-    if (screen_on && millis() - last_activity_ms >= currentScreenTimeout()) {
+    if (!deploy_mode_enabled && screen_on &&
+        millis() - last_activity_ms >= currentScreenTimeout()) {
         turnScreenOff();
     }
 
-    if (!screen_on && !isRadioBusy() &&
+    if (!deploy_mode_enabled && !screen_on && !isRadioBusy() &&
         millis() - screen_off_ms >= kLightSleepDelayMs) {
         enterLightSleep();
     }
