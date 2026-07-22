@@ -33,39 +33,20 @@ UTC+9).
 
 ### Roadmap
 
-#### Verify the current firmware on the device
+#### Current milestone: settings and deployment
 
-- [x] Create the Git-ignored `include/wifi_credentials.h` with real networks.
-- [x] Deploy the current `t-watch-s3-custom` HEAD to the watch.
-- [x] Verify connection to a configured 2.4 GHz Wi-Fi network.
-- [x] Verify touch/power wake after Light Sleep.
-- [x] Verify multi-network Wi-Fi selection, NTP-to-RTC synchronization, and
-  shutdown of an NTP-owned connection.
-- [x] Verify Wi-Fi status, SSID display, manual connect/reconnect, and reuse of
-  that connection by `SYNC NOW` without disconnecting it afterward.
-- [x] Verify explicit `DISCONNECT` and automatic disconnect on Light Sleep.
-- [x] Verify brightness persistence after reboot.
-- [x] Verify the upper-left battery status.
-- [x] Verify the fixed clock layout and timed bottom notifications.
-
-#### Next milestone: settings and synchronization
-
-- [x] Add a settings hub for navigating independent settings screens.
-- [x] Group the existing date/time and brightness screens under the settings
-  hub.
-- [x] Add a time synchronization screen with `SYNC NOW`, automatic sync
-  enable/disable, and the last synchronization result and time.
-- [x] Retry a failed Wi-Fi/NTP operation after 15 minutes without requiring a
-  display wake.
-
-#### Planned persistent settings
-
+- [ ] DEPLOY MODE to keep the display and CPU awake during firmware upload
 - [ ] Configurable clock-screen timeout
 - [ ] Configurable settings-screen timeout
 - [ ] Configurable delay before Light Sleep
-- [x] Automatic NTP synchronization enable/disable
 - [ ] 12-hour/24-hour clock selection
 - [ ] Restore-default-settings action
+
+#### Following milestone: clock and interaction foundation
+
+- [ ] Apply a seven-segment-style clock font
+- [ ] Power on/off with a long press of the crown
+- [ ] Japanese font and text-rendering foundation
 
 #### Later candidates
 
@@ -341,36 +322,20 @@ flowchart TD
 
 ### ロードマップ
 
-#### 現行ファームウェアの実機確認
+#### 現在のマイルストーン：設定とデプロイ
 
-- [x] Git管理外の`include/wifi_credentials.h`へ実際のネットワークを設定する。
-- [x] 現在の`t-watch-s3-custom` HEADを実機へデプロイする。
-- [x] 設定した2.4 GHz Wi-Fiネットワークへの接続を確認する。
-- [x] Light Sleep後のタッチ・電源ボタン復帰を確認する。
-- [x] 複数Wi-Fiの選択、NTPからRTCへの同期、NTP自身が開始した接続の停止を確認する。
-- [x] Wi-Fi状態、SSID表示、手動接続・再接続、その接続を`SYNC NOW`が
-  再利用し、同期後も維持することを確認する。
-- [x] 明示的な`DISCONNECT`とLight Sleep移行時の自動切断を確認する。
-- [x] 再起動後も明るさ設定が保持されることを確認する。
-- [x] 左上のバッテリー状態を確認する。
-- [x] 固定幅の時計表示と時間制御された下段通知を確認する。
-
-#### 次のマイルストーン：設定と時刻同期
-
-- [x] 独立した設定画面へ移動するための設定ハブを追加する。
-- [x] 既存の日付・時刻設定と明るさ設定を設定ハブへまとめる。
-- [x] `SYNC NOW`、自動同期の有効・無効、最終同期結果・時刻を備えた
-  時刻同期設定画面を追加する。
-- [x] Wi-Fi・NTP失敗から15分後、画面復帰を必要とせず再試行する。
-
-#### 実装予定の設定永続化
-
+- [ ] DEPLOY MODEへの切替（書き込み中は画面消灯とLight Sleepを抑止）
 - [ ] 時計画面の消灯時間設定
 - [ ] 設定画面の消灯時間設定
 - [ ] Light Sleepまでの待機時間設定
-- [x] NTP自動同期の有効・無効
 - [ ] 12時間・24時間表示の選択
 - [ ] 設定を初期値へ戻す操作
+
+#### 次のマイルストーン：時計・操作基盤の仕上げ
+
+- [ ] 時刻部分への7セグ風フォント適用
+- [ ] 竜頭長押しによる電源オン・オフ
+- [ ] 日本語フォント・表示基盤
 
 #### 将来の候補
 
