@@ -21,7 +21,7 @@ UTC+9).
 | Area | Status | Details |
 | --- | --- | --- |
 | Build foundation | Implemented and build-tested | Pinned Arduino-ESP32 3.3.8 toolchain and separate factory/custom PlatformIO environments |
-| Clock face | Implemented and build-tested | Fixed-position `HH:MM:SS`, English weekday/date, and stable per-field centering |
+| Clock face | Implemented and device-tested | Fixed-position `HH:MM:SS`, English weekday/date, and stable per-field centering |
 | RTC | Implemented and device-tested | RTC refresh whenever the clock face appears and a separate manual date/time screen |
 | Display timeout | Implemented and device-tested | 15-second clock timeout, 60-second settings timeout, and guarded touch wake |
 | Light Sleep | Implemented and device-tested | Sleep 5 seconds after display-off and wake by touch or power button |
@@ -46,7 +46,7 @@ UTC+9).
 - [x] Verify explicit `DISCONNECT` and automatic disconnect on Light Sleep.
 - [x] Verify brightness persistence after reboot.
 - [x] Verify the upper-left battery status.
-- [ ] Verify the fixed clock layout and timed bottom notifications.
+- [x] Verify the fixed clock layout and timed bottom notifications.
 
 #### Next milestone: settings and synchronization
 
@@ -329,7 +329,7 @@ flowchart TD
 | 領域 | 状況 | 内容 |
 | --- | --- | --- |
 | ビルド基盤 | 実装・ビルド確認済み | Arduino-ESP32 3.3.8の固定と、factory/customを分離したPlatformIO環境 |
-| 時計画面 | 実装・ビルド確認済み | 位置を固定した`HH:MM:SS`、英語の曜日・日付、時・分・秒ごとの中央揃え |
+| 時計画面 | 実装・実機確認済み | 位置を固定した`HH:MM:SS`、英語の曜日・日付、時・分・秒ごとの中央揃え |
 | RTC | 実装・実機確認済み | 時計画面表示時のRTC再読込と、独立した日付・時刻手動設定画面 |
 | 画面消灯 | 実装・実機確認済み | 時計15秒、設定60秒のタイムアウトと、誤操作を防ぐタッチ復帰 |
 | Light Sleep | 実装・実機確認済み | 消灯5秒後に移行し、タッチまたは電源ボタンで復帰 |
@@ -353,7 +353,7 @@ flowchart TD
 - [x] 明示的な`DISCONNECT`とLight Sleep移行時の自動切断を確認する。
 - [x] 再起動後も明るさ設定が保持されることを確認する。
 - [x] 左上のバッテリー状態を確認する。
-- [ ] 固定幅の時計表示と時間制御された下段通知を確認する。
+- [x] 固定幅の時計表示と時間制御された下段通知を確認する。
 
 #### 次のマイルストーン：設定と時刻同期
 
