@@ -21,15 +21,16 @@ UTC+9).
 | Area | Status | Details |
 | --- | --- | --- |
 | Build foundation | Implemented and build-tested | Pinned Arduino-ESP32 3.3.8 toolchain and separate factory/custom PlatformIO environments |
-| Clock face | Implemented and device-tested | Fixed-position `HH:MM:SS`, English weekday/date, and stable per-field centering |
+| Clock face | Implemented and build-tested; 24-hour layout device-tested | Fixed-position time fields, English weekday/date, and persistent 12-hour/24-hour selection with AM/PM |
 | RTC | Implemented and device-tested | RTC refresh whenever the clock face appears and a separate manual date/time screen |
-| Display timeout | Implemented and device-tested | 15-second clock timeout, 60-second settings timeout, and guarded touch wake |
-| Light Sleep | Implemented and device-tested | Sleep 5 seconds after display-off and wake by touch or power button |
+| Display timeout | Implemented and build-tested; default behavior device-tested | Persistent preset selection for clock and settings screen timeouts, with guarded touch wake |
+| Light Sleep | Implemented and build-tested; default behavior device-tested | Persistent preset delay after display-off and wake by touch or power button |
 | Deploy mode | Implemented and build-tested; device verification pending | Temporary `POWER & DISPLAY` setting that keeps the display and CPU awake for USB uploads and resets after reboot |
 | Battery status | Implemented and device-tested | Compact always-visible upper-left battery, charging, USB-power, and low-battery state |
 | Wi-Fi and NTP | Implemented and device-tested | Wi-Fi status, reconnect/disconnect controls, multiple fixed networks, persistent automatic synchronization, manual `SYNC NOW`, RTC update, and ownership-aware radio shutdown |
 | Brightness setting | Implemented and device-tested | Separate live-preview screen with `SAVE`/`CANCEL` and NVS persistence |
 | Settings hub | Implemented and build-tested | The clock-screen `SET` button opens `DATE & TIME`, `POWER & DISPLAY`, `BRIGHTNESS`, and a grouped `WI-FI & NTP` submenu |
+| Restore defaults | Implemented and build-tested; device verification pending | Confirmation screen restores brightness, display timeouts, clock format, and automatic time sync defaults immediately and in NVS |
 | Documentation | Implemented | Project-specific English and Japanese README |
 
 ### Roadmap
@@ -37,11 +38,11 @@ UTC+9).
 #### Current milestone: settings and deployment
 
 - [x] DEPLOY MODE to keep the display and CPU awake during firmware upload
-- [ ] Configurable clock-screen timeout
-- [ ] Configurable settings-screen timeout
-- [ ] Configurable delay before Light Sleep
-- [ ] 12-hour/24-hour clock selection
-- [ ] Restore-default-settings action
+- [x] Configurable clock-screen timeout
+- [x] Configurable settings-screen timeout
+- [x] Configurable delay before Light Sleep
+- [x] 12-hour/24-hour clock selection
+- [x] Restore-default-settings action
 
 #### Following milestone: clock and interaction foundation
 
@@ -152,13 +153,13 @@ flowchart TD
 
     CLOCK -- "Clock timer" --> TICK["Update display when the second changes"]
     TICK --> CLOCK
-    CLOCK -- "Touch" --> ACTIVE["Reset 15-second inactivity timer"]
+    CLOCK -- "Touch" --> ACTIVE["Reset configured inactivity timer"]
     ACTIVE --> CLOCK
     CLOCK -- "SET" --> HUB["Open settings hub"]
     HUB -- "BACK" --> CLOCK
 
-    CLOCK -- "15 seconds without input and DEPLOY MODE is off" --> OFF["Turn display off"]
-    OFF --> READY{"5 seconds elapsed and radio idle?"}
+    CLOCK -- "Configured timeout reached and DEPLOY MODE is off" --> OFF["Turn display off"]
+    OFF --> READY{"Configured sleep delay elapsed and radio idle?"}
     READY -- "No" --> OFF
     READY -- "Yes" --> SLEEP["Enter Light Sleep"]
     SLEEP --> WAKE{"Wake source"}
@@ -173,14 +174,22 @@ flowchart TD
   the hub. The `WI-FI & NTP` submenu opens the existing `WI-FI` and
   `TIME SYNC` screens. `SAVE`, `CANCEL`, and `BACK` return through the
   corresponding parent screen; the hub's `BACK` returns to the clock.
-- `POWER & DISPLAY` currently provides DEPLOY MODE. While enabled, the display
-  and CPU stay awake, and a `DEPLOY` indicator remains visible on the clock.
-  Disable it to restore normal power saving; a reboot always clears the mode.
+- `POWER & DISPLAY` provides DEPLOY MODE, display timeout presets, persistent
+  12-hour/24-hour selection, and a confirmation screen for restoring defaults.
+- While DEPLOY MODE is enabled, the display and CPU stay awake, and a `DEPLOY`
+  indicator remains visible on the clock. Disable it to restore normal power
+  saving; a reboot always clears the mode.
 - Brightness changes are previewed immediately; `SAVE` persists the value to
   NVS and `CANCEL` restores the previous value.
-- The clock screen turns off after 15 seconds of inactivity.
-- The settings screen turns off after 60 seconds of inactivity.
-- Light Sleep begins 5 seconds after the display turns off.
+- Clock timeout presets are 10, 15, 30, 60, and 120 seconds; the default is
+  15 seconds.
+- Settings timeout presets are 30, 60, 120, and 300 seconds; the default is
+  60 seconds.
+- Light Sleep delay presets are 5, 10, 30, and 60 seconds; the default is
+  5 seconds.
+- Restoring defaults resets brightness, the three timeout values, clock format,
+  and automatic time synchronization. It does not change RTC time, compile-time
+  Wi-Fi credentials, or NTP synchronization history.
 - A touch or a short power-button press wakes the watch.
 - When automatic time synchronization is enabled, an internal timer can wake
   the watch without turning on the display to perform a due synchronization.
@@ -201,12 +210,22 @@ flowchart TD
     DT2 -- "CANCEL" --> HUB
     DT3 --> HUB
 
-    HUB -- "POWER & DISPLAY" --> PD0["Show DEPLOY MODE state"]
-    PD0 --> PD1["Toggle DEPLOY MODE"]
+    HUB -- "POWER & DISPLAY" --> PD0["Power and display menu"]
+    PD0 -- "DEPLOY MODE" --> PD1["Toggle DEPLOY MODE"]
     PD1 -- "ON" --> PD2["Keep display and CPU awake"]
     PD1 -- "OFF" --> PD3["Restore normal power saving"]
     PD2 --> PD0
     PD3 --> PD0
+    PD0 -- "TIMEOUTS" --> PTO["Select clock, settings, and sleep presets"]
+    PTO -- "SAVE" --> PTS["Store timeout values in NVS"]
+    PTO -- "CANCEL" --> PD0
+    PTS --> PD0
+    PD0 -- "CLOCK FORMAT" --> PF["Toggle 12H or 24H and store in NVS"]
+    PF --> PD0
+    PD0 -- "RESET SETTINGS" --> PR{"Confirm reset?"}
+    PR -- "CANCEL" --> PD0
+    PR -- "RESET" --> PRD["Apply and store default settings"]
+    PRD --> HUB
     PD0 -- "BACK" --> HUB
 
     HUB -- "BRIGHTNESS" --> BR0["Load saved brightness"]
@@ -230,8 +249,8 @@ flowchart TD
     WN0 -- "BACK" --> HUB
 
     HUB -- "BACK" --> CLOCK
-    HUB -. "Any settings screen: 60 seconds without input and DEPLOY MODE is off" .-> OFF["Turn display off"]
-    OFF --> SLEEP["Enter Light Sleep after 5 seconds when radio is idle"]
+    HUB -. "Configured settings timeout reached and DEPLOY MODE is off" .-> OFF["Turn display off"]
+    OFF --> SLEEP["Enter Light Sleep after the configured delay when radio is idle"]
     SLEEP -- "Touch or power button" --> SAME["Wake on the same active settings screen"]
 ```
 
@@ -325,15 +344,16 @@ flowchart TD
 | 領域 | 状況 | 内容 |
 | --- | --- | --- |
 | ビルド基盤 | 実装・ビルド確認済み | Arduino-ESP32 3.3.8の固定と、factory/customを分離したPlatformIO環境 |
-| 時計画面 | 実装・実機確認済み | 位置を固定した`HH:MM:SS`、英語の曜日・日付、時・分・秒ごとの中央揃え |
+| 時計画面 | 実装・ビルド確認済み、24時間表示は実機確認済み | 位置を固定した時刻欄、英語の曜日・日付、AM/PM付き12時間・24時間表示の選択と永続化 |
 | RTC | 実装・実機確認済み | 時計画面表示時のRTC再読込と、独立した日付・時刻手動設定画面 |
-| 画面消灯 | 実装・実機確認済み | 時計15秒、設定60秒のタイムアウトと、誤操作を防ぐタッチ復帰 |
-| Light Sleep | 実装・実機確認済み | 消灯5秒後に移行し、タッチまたは電源ボタンで復帰 |
+| 画面消灯 | 実装・ビルド確認済み、初期値は実機確認済み | 時計画面と設定画面それぞれのプリセット式消灯時間設定・永続化と、誤操作を防ぐタッチ復帰 |
+| Light Sleep | 実装・ビルド確認済み、初期値は実機確認済み | 消灯後のプリセット式待機時間設定・永続化と、タッチまたは電源ボタンでの復帰 |
 | デプロイモード | 実装・ビルド確認済み、実機確認待ち | USB書き込み用に画面とCPUを起動状態に保つ一時的な`POWER & DISPLAY`設定。再起動時は解除 |
 | バッテリー状態 | 実装・実機確認済み | 左上に常時表示する簡潔な残量、充電、USB給電、低残量表示 |
 | Wi-Fi・NTP | 実装・実機確認済み | Wi-Fi状態、再接続・切断操作、複数固定ネットワーク、自動同期の永続化、手動`SYNC NOW`、RTC更新、接続元に応じたWi-Fi停止 |
 | 明るさ設定 | 実装・実機確認済み | 即時プレビュー、`SAVE`/`CANCEL`、NVS永続化を備えた独立画面 |
 | 設定ハブ | 実装・ビルド確認済み | 時計画面の`SET`から`DATE & TIME`、`POWER & DISPLAY`、`BRIGHTNESS`、および`WI-FI & NTP`サブメニューを開く構成 |
+| 設定初期化 | 実装・ビルド確認済み、実機確認待ち | 確認画面を経て、明るさ・画面時間・時計形式・NTP自動同期を即時およびNVS上で初期値へ戻す |
 | ドキュメント | 実装済み | このプロジェクト専用の英語・日本語README |
 
 ### ロードマップ
@@ -341,11 +361,11 @@ flowchart TD
 #### 現在のマイルストーン：設定とデプロイ
 
 - [x] DEPLOY MODEへの切替（書き込み中は画面消灯とLight Sleepを抑止）
-- [ ] 時計画面の消灯時間設定
-- [ ] 設定画面の消灯時間設定
-- [ ] Light Sleepまでの待機時間設定
-- [ ] 12時間・24時間表示の選択
-- [ ] 設定を初期値へ戻す操作
+- [x] 時計画面の消灯時間設定
+- [x] 設定画面の消灯時間設定
+- [x] Light Sleepまでの待機時間設定
+- [x] 12時間・24時間表示の選択
+- [x] 設定を初期値へ戻す操作
 
 #### 次のマイルストーン：時計・操作基盤の仕上げ
 
@@ -456,13 +476,13 @@ flowchart TD
 
     CLOCK -- "時計タイマー" --> TICK["秒が変化したとき表示を更新"]
     TICK --> CLOCK
-    CLOCK -- "タッチ" --> ACTIVE["15秒の無操作タイマーをリセット"]
+    CLOCK -- "タッチ" --> ACTIVE["設定済み無操作タイマーをリセット"]
     ACTIVE --> CLOCK
     CLOCK -- "SET" --> HUB["設定ハブを開く"]
     HUB -- "BACK" --> CLOCK
 
-    CLOCK -- "15秒間操作なし、かつDEPLOY MODEが無効" --> OFF["画面を消灯"]
-    OFF --> READY{"5秒経過して通信処理も停止?"}
+    CLOCK -- "設定時間に到達、かつDEPLOY MODEが無効" --> OFF["画面を消灯"]
+    OFF --> READY{"設定済み待機時間が経過し、通信処理も停止?"}
     READY -- "いいえ" --> OFF
     READY -- "はい" --> SLEEP["Light Sleepへ移行"]
     SLEEP --> WAKE{"復帰要因"}
@@ -477,14 +497,17 @@ flowchart TD
   いずれかを選択します。`WI-FI & NTP`サブメニューから、既存の`WI-FI`画面と
   `TIME SYNC`画面へ移動します。`SAVE`、`CANCEL`、`BACK`は対応する親画面へ戻り、
   ハブの`BACK`は時計画面へ戻ります。
-- `POWER & DISPLAY`では、現時点でDEPLOY MODEを切り替えられます。有効中は
-  画面とCPUを起動状態に保ち、時計画面へ`DEPLOY`を表示します。解除すると通常の
-  省電力動作へ戻り、再起動した場合も必ず解除されます。
+- `POWER & DISPLAY`では、DEPLOY MODE、各種タイムアウトのプリセット、
+  永続化される12時間・24時間表示、確認画面付きの設定初期化を操作できます。
+- DEPLOY MODEの有効中は画面とCPUを起動状態に保ち、時計画面へ`DEPLOY`を
+  表示します。解除すると通常の省電力動作へ戻り、再起動した場合も必ず解除されます。
 - 明るさは操作中に即時反映され、`SAVE`でNVSへ保存、`CANCEL`で変更前の値へ
   戻ります。
-- 時計画面は15秒間操作がないと消灯します。
-- 設定画面は60秒間操作がないと消灯します。
-- 消灯から5秒後にLight Sleepへ移行します。
+- 時計画面の消灯時間は10、15、30、60、120秒から選択でき、初期値は15秒です。
+- 設定画面の消灯時間は30、60、120、300秒から選択でき、初期値は60秒です。
+- Light Sleepまでの待機時間は5、10、30、60秒から選択でき、初期値は5秒です。
+- 設定初期化では明るさ、3種類のタイムアウト、時計形式、NTP自動同期を初期値へ
+  戻します。RTC時刻、ビルド時に設定するWi-Fi認証情報、NTP同期履歴は変更しません。
 - タッチまたは電源ボタンの短押しで復帰します。
 - 自動時刻同期が有効な場合、内部タイマーが画面を点灯せずに時計を復帰させ、
   期限に達した同期を実行できます。
@@ -505,12 +528,22 @@ flowchart TD
     DT2 -- "CANCEL" --> HUB
     DT3 --> HUB
 
-    HUB -- "POWER & DISPLAY" --> PD0["DEPLOY MODEの状態を表示"]
-    PD0 --> PD1["DEPLOY MODEを切り替える"]
+    HUB -- "POWER & DISPLAY" --> PD0["電源・表示設定メニュー"]
+    PD0 -- "DEPLOY MODE" --> PD1["DEPLOY MODEを切り替える"]
     PD1 -- "ON" --> PD2["画面とCPUを起動状態に保つ"]
     PD1 -- "OFF" --> PD3["通常の省電力動作へ戻す"]
     PD2 --> PD0
     PD3 --> PD0
+    PD0 -- "TIMEOUTS" --> PTO["時計・設定・Light Sleepのプリセットを選択"]
+    PTO -- "SAVE" --> PTS["タイムアウト値をNVSへ保存"]
+    PTO -- "CANCEL" --> PD0
+    PTS --> PD0
+    PD0 -- "CLOCK FORMAT" --> PF["12H・24Hを切り替えてNVSへ保存"]
+    PF --> PD0
+    PD0 -- "RESET SETTINGS" --> PR{"初期化する?"}
+    PR -- "CANCEL" --> PD0
+    PR -- "RESET" --> PRD["初期値を即時反映して保存"]
+    PRD --> HUB
     PD0 -- "BACK" --> HUB
 
     HUB -- "BRIGHTNESS" --> BR0["保存済みの明るさを読み込む"]
@@ -534,8 +567,8 @@ flowchart TD
     WN0 -- "BACK" --> HUB
 
     HUB -- "BACK" --> CLOCK
-    HUB -. "全設定画面: 60秒間操作なし、かつDEPLOY MODEが無効" .-> OFF["画面を消灯"]
-    OFF --> SLEEP["通信停止後、5秒でLight Sleepへ移行"]
+    HUB -. "設定画面の設定時間に到達、かつDEPLOY MODEが無効" .-> OFF["画面を消灯"]
+    OFF --> SLEEP["通信停止後、設定済み待機時間でLight Sleepへ移行"]
     SLEEP -- "タッチまたは電源ボタン" --> SAME["表示していた設定画面へ復帰"]
 ```
 

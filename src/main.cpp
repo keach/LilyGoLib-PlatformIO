@@ -28,9 +28,9 @@ constexpr uint32_t kAccentColor = 0x55C2FF;
 constexpr uint32_t kMutedColor = 0x94A3AD;
 constexpr uint32_t kButtonColor = 0x24323D;
 constexpr uint32_t kLowBatteryColor = 0xFF6B6B;
-constexpr uint32_t kClockScreenTimeoutMs = 15 * 1000;
-constexpr uint32_t kSettingsScreenTimeoutMs = 60 * 1000;
-constexpr uint32_t kLightSleepDelayMs = 5 * 1000;
+constexpr uint32_t kDefaultClockScreenTimeoutSeconds = 15;
+constexpr uint32_t kDefaultSettingsScreenTimeoutSeconds = 60;
+constexpr uint32_t kDefaultLightSleepDelaySeconds = 5;
 constexpr uint32_t kBatteryUpdateIntervalMs = 10 * 1000;
 constexpr uint32_t kWiFiConnectTimeoutMs = 10 * 1000;
 constexpr uint32_t kNtpSyncTimeoutMs = 15 * 1000;
@@ -45,6 +45,10 @@ constexpr uint8_t kMaximumBrightness = 255;
 constexpr uint8_t kBrightnessStep = 10;
 constexpr int kMinimumYear = 2000;
 constexpr int kMaximumYear = 2099;
+
+constexpr uint32_t kClockTimeoutOptions[] = {10, 15, 30, 60, 120};
+constexpr uint32_t kSettingsTimeoutOptions[] = {30, 60, 120, 300};
+constexpr uint32_t kLightSleepDelayOptions[] = {5, 10, 30, 60};
 
 const char *const kTimeZone = "JST-9";
 const char *const kNtpServer1 = "pool.ntp.org";
@@ -96,6 +100,8 @@ const char *const kFieldNames[] = {
 lv_obj_t *clock_screen;
 lv_obj_t *settings_hub_screen;
 lv_obj_t *power_display_screen;
+lv_obj_t *timeout_settings_screen;
+lv_obj_t *reset_settings_screen;
 lv_obj_t *wifi_ntp_screen;
 lv_obj_t *date_time_screen;
 lv_obj_t *brightness_screen;
@@ -104,12 +110,19 @@ lv_obj_t *wifi_screen;
 lv_obj_t *hour_label;
 lv_obj_t *minute_label;
 lv_obj_t *second_label;
+lv_obj_t *meridiem_label;
 lv_obj_t *weekday_label;
 lv_obj_t *date_label;
 lv_obj_t *battery_label;
 lv_obj_t *deploy_mode_clock_label;
 lv_obj_t *deploy_mode_button_label;
 lv_obj_t *deploy_mode_status_label;
+lv_obj_t *clock_format_button_label;
+lv_obj_t *clock_timeout_button_label;
+lv_obj_t *settings_timeout_button_label;
+lv_obj_t *light_sleep_delay_button_label;
+lv_obj_t *timeout_settings_status_label;
+lv_obj_t *reset_settings_status_label;
 lv_obj_t *time_sync_label;
 lv_obj_t *settings_status_label;
 lv_obj_t *brightness_slider;
@@ -140,6 +153,19 @@ uint32_t last_activity_ms = 0;
 uint32_t screen_off_ms = 0;
 bool screen_on = true;
 bool deploy_mode_enabled = false;
+bool use_24_hour_clock = true;
+uint32_t clock_screen_timeout_seconds =
+    kDefaultClockScreenTimeoutSeconds;
+uint32_t settings_screen_timeout_seconds =
+    kDefaultSettingsScreenTimeoutSeconds;
+uint32_t light_sleep_delay_seconds =
+    kDefaultLightSleepDelaySeconds;
+uint32_t pending_clock_screen_timeout_seconds =
+    kDefaultClockScreenTimeoutSeconds;
+uint32_t pending_settings_screen_timeout_seconds =
+    kDefaultSettingsScreenTimeoutSeconds;
+uint32_t pending_light_sleep_delay_seconds =
+    kDefaultLightSleepDelaySeconds;
 uint8_t active_brightness = kDefaultBrightness;
 uint8_t pending_brightness = kDefaultBrightness;
 TimeSyncState time_sync_state = TimeSyncState::Idle;
@@ -168,6 +194,8 @@ bool isRadioBusy();
 void refreshTimeSyncScreen();
 void refreshWiFiScreen();
 void refreshPowerDisplayScreen();
+void refreshTimeoutSettingsScreen();
+void updateClock(lv_timer_t *);
 uint64_t nextAutomaticSyncWakeupUs();
 
 bool isValidDateTime(const struct tm &timeinfo)
@@ -330,9 +358,11 @@ void deviceEventCallback(DeviceEvent_t event, void *params, void *)
 
 uint32_t currentScreenTimeout()
 {
-    return lv_screen_active() == clock_screen
-               ? kClockScreenTimeoutMs
-               : kSettingsScreenTimeoutMs;
+    const uint32_t timeout_seconds =
+        lv_screen_active() == clock_screen
+            ? clock_screen_timeout_seconds
+            : settings_screen_timeout_seconds;
+    return timeout_seconds * 1000;
 }
 
 void styleScreen(lv_obj_t *screen)
@@ -378,6 +408,7 @@ void showClockError(const char *message)
     lv_label_set_text(second_label, "--");
     lv_label_set_text(weekday_label, "CLOCK ERROR");
     lv_label_set_text(date_label, message);
+    lv_obj_add_flag(meridiem_label, LV_OBJ_FLAG_HIDDEN);
 }
 
 void updateClock(lv_timer_t *)
@@ -403,7 +434,20 @@ void updateClock(lv_timer_t *)
     }
     last_second = timeinfo.tm_sec;
 
-    lv_label_set_text_fmt(hour_label, "%02d", timeinfo.tm_hour);
+    int display_hour = timeinfo.tm_hour;
+    if (use_24_hour_clock) {
+        lv_obj_add_flag(meridiem_label, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_label_set_text(meridiem_label,
+                          timeinfo.tm_hour < 12 ? "AM" : "PM");
+        lv_obj_remove_flag(meridiem_label, LV_OBJ_FLAG_HIDDEN);
+        display_hour %= 12;
+        if (display_hour == 0) {
+            display_hour = 12;
+        }
+    }
+
+    lv_label_set_text_fmt(hour_label, "%02d", display_hour);
     lv_label_set_text_fmt(minute_label, "%02d", timeinfo.tm_min);
     lv_label_set_text_fmt(second_label, "%02d", timeinfo.tm_sec);
     lv_label_set_text(weekday_label, kWeekdays[timeinfo.tm_wday]);
@@ -667,6 +711,81 @@ void refreshWiFiScreen()
     }
 }
 
+template <size_t N>
+bool isTimeoutOption(uint32_t value, const uint32_t (&options)[N])
+{
+    for (const uint32_t option : options) {
+        if (value == option) {
+            return true;
+        }
+    }
+    return false;
+}
+
+template <size_t N>
+uint32_t nextTimeoutOption(uint32_t value,
+                           const uint32_t (&options)[N])
+{
+    for (size_t index = 0; index < N; ++index) {
+        if (value == options[index]) {
+            return options[(index + 1) % N];
+        }
+    }
+    return options[0];
+}
+
+void loadPowerDisplaySettings()
+{
+    Preferences preferences;
+    if (!preferences.begin("power_display", true)) {
+        Serial.println("Unable to read power and display settings");
+        return;
+    }
+
+    const uint32_t stored_clock_timeout = preferences.getUInt(
+        "clock_sec", kDefaultClockScreenTimeoutSeconds);
+    const uint32_t stored_settings_timeout = preferences.getUInt(
+        "settings_sec", kDefaultSettingsScreenTimeoutSeconds);
+    const uint32_t stored_sleep_delay = preferences.getUInt(
+        "sleep_sec", kDefaultLightSleepDelaySeconds);
+    use_24_hour_clock = preferences.getBool("format_24h", true);
+    preferences.end();
+
+    clock_screen_timeout_seconds =
+        isTimeoutOption(stored_clock_timeout, kClockTimeoutOptions)
+            ? stored_clock_timeout
+            : kDefaultClockScreenTimeoutSeconds;
+    settings_screen_timeout_seconds =
+        isTimeoutOption(stored_settings_timeout, kSettingsTimeoutOptions)
+            ? stored_settings_timeout
+            : kDefaultSettingsScreenTimeoutSeconds;
+    light_sleep_delay_seconds =
+        isTimeoutOption(stored_sleep_delay, kLightSleepDelayOptions)
+            ? stored_sleep_delay
+            : kDefaultLightSleepDelaySeconds;
+}
+
+bool savePowerDisplaySettings()
+{
+    Preferences preferences;
+    if (!preferences.begin("power_display", false)) {
+        Serial.println("Unable to save power and display settings");
+        return false;
+    }
+
+    const bool clock_saved =
+        preferences.putUInt("clock_sec", clock_screen_timeout_seconds) > 0;
+    const bool settings_saved =
+        preferences.putUInt("settings_sec",
+                            settings_screen_timeout_seconds) > 0;
+    const bool sleep_saved =
+        preferences.putUInt("sleep_sec", light_sleep_delay_seconds) > 0;
+    const bool format_saved =
+        preferences.putBool("format_24h", use_24_hour_clock) > 0;
+    preferences.end();
+    return clock_saved && settings_saved && sleep_saved && format_saved;
+}
+
 void loadBrightnessSetting()
 {
     Preferences preferences;
@@ -721,19 +840,25 @@ void loadTimeSyncSettings()
     preferences.end();
 }
 
-void saveTimeSyncSettings()
+bool saveTimeSyncSettings()
 {
     Preferences preferences;
     if (!preferences.begin("clock_sync", false)) {
         Serial.println("Unable to save time sync settings");
-        return;
+        return false;
     }
-    preferences.putULong64("last_ntp",
-                           static_cast<uint64_t>(last_ntp_sync_epoch));
-    preferences.putBool("auto_sync", automatic_time_sync_enabled);
-    preferences.putUChar("last_result",
-                         static_cast<uint8_t>(last_time_sync_result));
+    const bool last_sync_saved =
+        preferences.putULong64(
+            "last_ntp", static_cast<uint64_t>(last_ntp_sync_epoch)) > 0;
+    const bool auto_sync_saved =
+        preferences.putBool("auto_sync",
+                            automatic_time_sync_enabled) > 0;
+    const bool result_saved =
+        preferences.putUChar(
+            "last_result",
+            static_cast<uint8_t>(last_time_sync_result)) > 0;
     preferences.end();
+    return last_sync_saved && auto_sync_saved && result_saved;
 }
 
 void ntpTimeAvailableCallback(struct timeval *)
@@ -1130,6 +1255,18 @@ void showPowerDisplayScreen(lv_event_t *)
                         180, 0, false);
 }
 
+void showTimeoutSettingsScreen(lv_event_t *)
+{
+    lv_screen_load_anim(timeout_settings_screen,
+                        LV_SCR_LOAD_ANIM_MOVE_LEFT, 180, 0, false);
+}
+
+void showResetSettingsScreen(lv_event_t *)
+{
+    lv_screen_load_anim(reset_settings_screen,
+                        LV_SCR_LOAD_ANIM_MOVE_LEFT, 180, 0, false);
+}
+
 void showWiFiNtpScreen(lv_event_t *)
 {
     lv_screen_load_anim(wifi_ntp_screen, LV_SCR_LOAD_ANIM_MOVE_LEFT,
@@ -1140,6 +1277,12 @@ void returnToSettingsHubScreen(lv_event_t *)
 {
     lv_screen_load_anim(settings_hub_screen, LV_SCR_LOAD_ANIM_MOVE_RIGHT,
                         180, 0, false);
+}
+
+void returnToPowerDisplayScreen(lv_event_t *)
+{
+    lv_screen_load_anim(power_display_screen,
+                        LV_SCR_LOAD_ANIM_MOVE_RIGHT, 180, 0, false);
 }
 
 void returnToWiFiNtpScreen(lv_event_t *)
@@ -1156,14 +1299,36 @@ void refreshPowerDisplayScreen()
                           : "DEPLOY MODE: OFF");
     lv_label_set_text(deploy_mode_status_label,
                       deploy_mode_enabled
-                          ? "SCREEN AND CPU STAY AWAKE"
-                          : "NORMAL POWER SAVING ACTIVE");
+                          ? "DEPLOY MODE KEEPS DEVICE AWAKE"
+                          : "POWER SAVING ACTIVE");
+    lv_obj_set_style_text_color(deploy_mode_status_label,
+                                lv_color_hex(kMutedColor), 0);
+    lv_label_set_text(clock_format_button_label,
+                      use_24_hour_clock
+                          ? "CLOCK FORMAT: 24H"
+                          : "CLOCK FORMAT: 12H");
 
     if (deploy_mode_enabled) {
         lv_obj_remove_flag(deploy_mode_clock_label, LV_OBJ_FLAG_HIDDEN);
     } else {
         lv_obj_add_flag(deploy_mode_clock_label, LV_OBJ_FLAG_HIDDEN);
     }
+}
+
+void refreshTimeoutSettingsScreen()
+{
+    lv_label_set_text_fmt(clock_timeout_button_label,
+                          "CLOCK SCREEN: %lu SEC",
+                          static_cast<unsigned long>(
+                              pending_clock_screen_timeout_seconds));
+    lv_label_set_text_fmt(settings_timeout_button_label,
+                          "SETTINGS: %lu SEC",
+                          static_cast<unsigned long>(
+                              pending_settings_screen_timeout_seconds));
+    lv_label_set_text_fmt(light_sleep_delay_button_label,
+                          "LIGHT SLEEP: %lu SEC",
+                          static_cast<unsigned long>(
+                              pending_light_sleep_delay_seconds));
 }
 
 void toggleDeployModeCallback(lv_event_t *)
@@ -1175,12 +1340,165 @@ void toggleDeployModeCallback(lv_event_t *)
                   deploy_mode_enabled ? "enabled" : "disabled");
 }
 
+void toggleClockFormatCallback(lv_event_t *)
+{
+    const bool previous_format = use_24_hour_clock;
+    use_24_hour_clock = !use_24_hour_clock;
+    if (!savePowerDisplaySettings()) {
+        use_24_hour_clock = previous_format;
+        refreshPowerDisplayScreen();
+        lv_label_set_text(deploy_mode_status_label, "SAVE FAILED");
+        lv_obj_set_style_text_color(deploy_mode_status_label,
+                                    lv_color_hex(kLowBatteryColor), 0);
+        return;
+    }
+
+    last_second = -1;
+    last_activity_ms = millis();
+    refreshPowerDisplayScreen();
+    updateClock(nullptr);
+    Serial.printf("Clock format: %s\n",
+                  use_24_hour_clock ? "24-hour" : "12-hour");
+}
+
 void powerDisplayScreenEventCallback(lv_event_t *event)
 {
     if (lv_event_get_code(event) == LV_EVENT_SCREEN_LOAD_START) {
         last_activity_ms = millis();
+        lv_obj_set_style_text_color(deploy_mode_status_label,
+                                    lv_color_hex(kMutedColor), 0);
         refreshPowerDisplayScreen();
     }
+}
+
+void timeoutSettingsScreenEventCallback(lv_event_t *event)
+{
+    if (lv_event_get_code(event) != LV_EVENT_SCREEN_LOAD_START) {
+        return;
+    }
+
+    last_activity_ms = millis();
+    pending_clock_screen_timeout_seconds = clock_screen_timeout_seconds;
+    pending_settings_screen_timeout_seconds =
+        settings_screen_timeout_seconds;
+    pending_light_sleep_delay_seconds = light_sleep_delay_seconds;
+    lv_label_set_text(timeout_settings_status_label, "SELECT A PRESET");
+    lv_obj_set_style_text_color(timeout_settings_status_label,
+                                lv_color_hex(kMutedColor), 0);
+    refreshTimeoutSettingsScreen();
+}
+
+void cycleClockTimeoutCallback(lv_event_t *)
+{
+    pending_clock_screen_timeout_seconds = nextTimeoutOption(
+        pending_clock_screen_timeout_seconds, kClockTimeoutOptions);
+    refreshTimeoutSettingsScreen();
+}
+
+void cycleSettingsTimeoutCallback(lv_event_t *)
+{
+    pending_settings_screen_timeout_seconds = nextTimeoutOption(
+        pending_settings_screen_timeout_seconds, kSettingsTimeoutOptions);
+    refreshTimeoutSettingsScreen();
+}
+
+void cycleLightSleepDelayCallback(lv_event_t *)
+{
+    pending_light_sleep_delay_seconds = nextTimeoutOption(
+        pending_light_sleep_delay_seconds, kLightSleepDelayOptions);
+    refreshTimeoutSettingsScreen();
+}
+
+void cancelTimeoutSettingsCallback(lv_event_t *)
+{
+    pending_clock_screen_timeout_seconds = clock_screen_timeout_seconds;
+    pending_settings_screen_timeout_seconds =
+        settings_screen_timeout_seconds;
+    pending_light_sleep_delay_seconds = light_sleep_delay_seconds;
+    returnToPowerDisplayScreen(nullptr);
+}
+
+void saveTimeoutSettingsCallback(lv_event_t *)
+{
+    const uint32_t previous_clock_timeout =
+        clock_screen_timeout_seconds;
+    const uint32_t previous_settings_timeout =
+        settings_screen_timeout_seconds;
+    const uint32_t previous_sleep_delay = light_sleep_delay_seconds;
+
+    clock_screen_timeout_seconds =
+        pending_clock_screen_timeout_seconds;
+    settings_screen_timeout_seconds =
+        pending_settings_screen_timeout_seconds;
+    light_sleep_delay_seconds = pending_light_sleep_delay_seconds;
+    if (!savePowerDisplaySettings()) {
+        clock_screen_timeout_seconds = previous_clock_timeout;
+        settings_screen_timeout_seconds = previous_settings_timeout;
+        light_sleep_delay_seconds = previous_sleep_delay;
+        lv_label_set_text(timeout_settings_status_label, "SAVE FAILED");
+        lv_obj_set_style_text_color(timeout_settings_status_label,
+                                    lv_color_hex(kLowBatteryColor), 0);
+        return;
+    }
+
+    last_activity_ms = millis();
+    Serial.printf("Timeouts saved: clock=%lus settings=%lus sleep=%lus\n",
+                  static_cast<unsigned long>(clock_screen_timeout_seconds),
+                  static_cast<unsigned long>(settings_screen_timeout_seconds),
+                  static_cast<unsigned long>(light_sleep_delay_seconds));
+    returnToPowerDisplayScreen(nullptr);
+}
+
+void resetSettingsScreenEventCallback(lv_event_t *event)
+{
+    if (lv_event_get_code(event) == LV_EVENT_SCREEN_LOAD_START) {
+        last_activity_ms = millis();
+        lv_label_set_text(reset_settings_status_label,
+                          "THIS CANNOT BE UNDONE");
+        lv_obj_set_style_text_color(reset_settings_status_label,
+                                    lv_color_hex(kLowBatteryColor), 0);
+    }
+}
+
+void resetAllSettingsCallback(lv_event_t *)
+{
+    active_brightness = kDefaultBrightness;
+    pending_brightness = kDefaultBrightness;
+    clock_screen_timeout_seconds = kDefaultClockScreenTimeoutSeconds;
+    settings_screen_timeout_seconds = kDefaultSettingsScreenTimeoutSeconds;
+    light_sleep_delay_seconds = kDefaultLightSleepDelaySeconds;
+    pending_clock_screen_timeout_seconds =
+        kDefaultClockScreenTimeoutSeconds;
+    pending_settings_screen_timeout_seconds =
+        kDefaultSettingsScreenTimeoutSeconds;
+    pending_light_sleep_delay_seconds =
+        kDefaultLightSleepDelaySeconds;
+    use_24_hour_clock = true;
+    automatic_time_sync_enabled = true;
+    deploy_mode_enabled = false;
+
+    const bool brightness_saved = saveBrightnessSetting();
+    const bool power_display_saved = savePowerDisplaySettings();
+    const bool time_sync_saved = saveTimeSyncSettings();
+    const bool saved = brightness_saved &&
+                       power_display_saved &&
+                       time_sync_saved;
+
+    instance.setBrightness(active_brightness);
+    last_second = -1;
+    last_activity_ms = millis();
+    refreshPowerDisplayScreen();
+    refreshTimeSyncScreen();
+    updateClock(nullptr);
+    requestTimeSyncIfDue();
+
+    if (!saved) {
+        lv_label_set_text(reset_settings_status_label, "RESET SAVE FAILED");
+        return;
+    }
+
+    Serial.println("Saved settings restored to defaults");
+    returnToSettingsHubScreen(nullptr);
 }
 
 void updateBrightnessControls()
@@ -1429,6 +1747,13 @@ void createClockScreen()
     createClockTimeLabel(":", 36, 12);
     second_label = createClockTimeLabel("--", 72, 60);
 
+    meridiem_label = lv_label_create(clock_screen);
+    lv_label_set_text(meridiem_label, "AM");
+    lv_obj_set_style_text_font(meridiem_label, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(meridiem_label, lv_color_hex(kMutedColor), 0);
+    lv_obj_align(meridiem_label, LV_ALIGN_CENTER, 100, 8);
+    lv_obj_add_flag(meridiem_label, LV_OBJ_FLAG_HIDDEN);
+
     weekday_label = lv_label_create(clock_screen);
     lv_obj_set_style_text_font(weekday_label, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(weekday_label, lv_color_hex(kAccentColor), 0);
@@ -1511,25 +1836,10 @@ void createPowerDisplayScreen()
     lv_label_set_text(title, "POWER & DISPLAY");
     lv_obj_set_style_text_font(title, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(kAccentColor), 0);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 14);
-
-    lv_obj_t *description = lv_label_create(power_display_screen);
-    lv_label_set_text(description,
-                      "KEEP THE DISPLAY AND CPU AWAKE\nFOR USB UPLOADS");
-    lv_obj_set_width(description, 210);
-    lv_obj_set_style_text_align(description, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_font(description, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(description, lv_color_hex(kMutedColor), 0);
-    lv_obj_align(description, LV_ALIGN_TOP_MID, 0, 54);
-
-    lv_obj_t *deploy_mode_button = createButton(
-        power_display_screen, "DEPLOY MODE: OFF",
-        20, 102, 200, 44, toggleDeployModeCallback);
-    deploy_mode_button_label = lv_obj_get_child(deploy_mode_button, 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 6);
 
     deploy_mode_status_label = lv_label_create(power_display_screen);
-    lv_label_set_text(deploy_mode_status_label,
-                      "NORMAL POWER SAVING ACTIVE");
+    lv_label_set_text(deploy_mode_status_label, "POWER SAVING ACTIVE");
     lv_obj_set_width(deploy_mode_status_label, 220);
     lv_obj_set_style_text_align(deploy_mode_status_label,
                                 LV_TEXT_ALIGN_CENTER, 0);
@@ -1537,11 +1847,132 @@ void createPowerDisplayScreen()
                                &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(deploy_mode_status_label,
                                 lv_color_hex(kMutedColor), 0);
-    lv_obj_align(deploy_mode_status_label, LV_ALIGN_TOP_MID, 0, 164);
+    lv_obj_align(deploy_mode_status_label, LV_ALIGN_TOP_MID, 0, 30);
+
+    lv_obj_t *deploy_mode_button = createButton(
+        power_display_screen, "DEPLOY MODE: OFF",
+        20, 44, 200, 34, toggleDeployModeCallback);
+    deploy_mode_button_label = lv_obj_get_child(deploy_mode_button, 0);
+
+    createButton(power_display_screen, "TIMEOUTS",
+                 20, 82, 200, 34, showTimeoutSettingsScreen);
+
+    lv_obj_t *clock_format_button = createButton(
+        power_display_screen, "CLOCK FORMAT: 24H",
+        20, 120, 200, 34, toggleClockFormatCallback);
+    clock_format_button_label = lv_obj_get_child(clock_format_button, 0);
+
+    lv_obj_t *reset_button = createButton(
+        power_display_screen, "RESET SETTINGS",
+        20, 158, 200, 34, showResetSettingsScreen);
+    lv_obj_set_style_text_color(lv_obj_get_child(reset_button, 0),
+                                lv_color_hex(kLowBatteryColor), 0);
 
     createButton(power_display_screen, "BACK", 20, 202, 200, 30,
                  returnToSettingsHubScreen);
     refreshPowerDisplayScreen();
+}
+
+void createTimeoutSettingsScreen()
+{
+    timeout_settings_screen = lv_obj_create(nullptr);
+    styleScreen(timeout_settings_screen);
+    lv_obj_add_event_cb(timeout_settings_screen, markUserActivity,
+                        LV_EVENT_PRESSED, nullptr);
+    lv_obj_add_event_cb(timeout_settings_screen,
+                        timeoutSettingsScreenEventCallback,
+                        LV_EVENT_SCREEN_LOAD_START, nullptr);
+
+    lv_obj_t *title = lv_label_create(timeout_settings_screen);
+    lv_label_set_text(title, "DISPLAY TIMEOUTS");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(kAccentColor), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
+
+    lv_obj_t *clock_timeout_button = createButton(
+        timeout_settings_screen, "CLOCK SCREEN: 15 SEC",
+        20, 46, 200, 34, cycleClockTimeoutCallback);
+    clock_timeout_button_label = lv_obj_get_child(
+        clock_timeout_button, 0);
+
+    lv_obj_t *settings_timeout_button = createButton(
+        timeout_settings_screen, "SETTINGS: 60 SEC",
+        20, 86, 200, 34, cycleSettingsTimeoutCallback);
+    settings_timeout_button_label = lv_obj_get_child(
+        settings_timeout_button, 0);
+
+    lv_obj_t *sleep_delay_button = createButton(
+        timeout_settings_screen, "LIGHT SLEEP: 5 SEC",
+        20, 126, 200, 34, cycleLightSleepDelayCallback);
+    light_sleep_delay_button_label = lv_obj_get_child(
+        sleep_delay_button, 0);
+
+    timeout_settings_status_label =
+        lv_label_create(timeout_settings_screen);
+    lv_label_set_text(timeout_settings_status_label, "SELECT A PRESET");
+    lv_obj_set_style_text_font(timeout_settings_status_label,
+                               &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(timeout_settings_status_label,
+                                lv_color_hex(kMutedColor), 0);
+    lv_obj_align(timeout_settings_status_label,
+                 LV_ALIGN_TOP_MID, 0, 174);
+
+    createButton(timeout_settings_screen, "CANCEL",
+                 15, 202, 100, 30, cancelTimeoutSettingsCallback);
+    lv_obj_t *save = createButton(
+        timeout_settings_screen, "SAVE",
+        125, 202, 100, 30, saveTimeoutSettingsCallback);
+    lv_obj_set_style_bg_color(save, lv_color_hex(kAccentColor), 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(save, 0),
+                                lv_color_hex(kBackgroundColor), 0);
+    refreshTimeoutSettingsScreen();
+}
+
+void createResetSettingsScreen()
+{
+    reset_settings_screen = lv_obj_create(nullptr);
+    styleScreen(reset_settings_screen);
+    lv_obj_add_event_cb(reset_settings_screen, markUserActivity,
+                        LV_EVENT_PRESSED, nullptr);
+    lv_obj_add_event_cb(reset_settings_screen,
+                        resetSettingsScreenEventCallback,
+                        LV_EVENT_SCREEN_LOAD_START, nullptr);
+
+    lv_obj_t *title = lv_label_create(reset_settings_screen);
+    lv_label_set_text(title, "RESET SETTINGS?");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(kLowBatteryColor), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 28);
+
+    lv_obj_t *description = lv_label_create(reset_settings_screen);
+    lv_label_set_text(
+        description,
+        "BRIGHTNESS, DISPLAY TIMEOUTS,\nCLOCK FORMAT, AND AUTO SYNC\n"
+        "WILL RETURN TO DEFAULTS.");
+    lv_obj_set_width(description, 220);
+    lv_obj_set_style_text_align(description, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(description, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(description, lv_color_hex(kPrimaryColor), 0);
+    lv_obj_align(description, LV_ALIGN_TOP_MID, 0, 76);
+
+    reset_settings_status_label = lv_label_create(reset_settings_screen);
+    lv_label_set_text(reset_settings_status_label,
+                      "THIS CANNOT BE UNDONE");
+    lv_obj_set_style_text_font(reset_settings_status_label,
+                               &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(reset_settings_status_label,
+                                lv_color_hex(kLowBatteryColor), 0);
+    lv_obj_align(reset_settings_status_label,
+                 LV_ALIGN_TOP_MID, 0, 160);
+
+    createButton(reset_settings_screen, "CANCEL",
+                 15, 202, 100, 30, returnToPowerDisplayScreen);
+    lv_obj_t *reset = createButton(
+        reset_settings_screen, "RESET",
+        125, 202, 100, 30, resetAllSettingsCallback);
+    lv_obj_set_style_bg_color(reset, lv_color_hex(kLowBatteryColor), 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(reset, 0),
+                                lv_color_hex(kBackgroundColor), 0);
 }
 
 void createWiFiNtpScreen()
@@ -1827,10 +2258,13 @@ void setup()
     beginLvglHelper(instance);
     loadBrightnessSetting();
     loadTimeSyncSettings();
+    loadPowerDisplaySettings();
 
     createClockScreen();
     createSettingsHubScreen();
     createPowerDisplayScreen();
+    createTimeoutSettingsScreen();
+    createResetSettingsScreen();
     createWiFiNtpScreen();
     createDateTimeScreen();
     createBrightnessScreen();
@@ -1864,7 +2298,7 @@ void loop()
     }
 
     if (!deploy_mode_enabled && !screen_on && !isRadioBusy() &&
-        millis() - screen_off_ms >= kLightSleepDelayMs) {
+        millis() - screen_off_ms >= light_sleep_delay_seconds * 1000) {
         enterLightSleep();
     }
 
