@@ -21,7 +21,7 @@ UTC+9).
 | Area | Status | Details |
 | --- | --- | --- |
 | Build foundation | Implemented and build-tested | Pinned Arduino-ESP32 3.3.8 toolchain and separate factory/custom PlatformIO environments |
-| Clock face | Implemented and device-tested; reboot persistence pending | Fixed-position time fields, English weekday/date, and persistent 12-hour/24-hour selection with AM/PM |
+| Clock face | Implemented and device-tested; reboot persistence pending | Fixed-position time fields, compact `yyyy.mm.dd. ddd` date, and persistent 12-hour/24-hour selection with AM/PM |
 | Seven-segment clock font | Implemented and device-tested | 36 px DSEG7 Classic Regular subset for digits and error dashes, with verified legibility, clipping, and independent field centering in both clock formats |
 | RTC | Implemented and device-tested | RTC refresh whenever the clock face appears and a separate manual date/time screen |
 | Display timeout | Implemented and partially device-tested | Preset selection and saving are device-tested; configured timing and reboot persistence remain to be verified |
@@ -67,6 +67,8 @@ UTC+9).
 
 - [x] Verify DSEG7 digit legibility, clipping, and per-field centering in both
   12-hour and 24-hour modes.
+- [x] Verify the single-line `yyyy.mm.dd. ddd` date layout and the cleared area
+  below it.
 
 #### Later candidates
 
@@ -371,7 +373,7 @@ flowchart TD
 | 領域 | 状況 | 内容 |
 | --- | --- | --- |
 | ビルド基盤 | 実装・ビルド確認済み | Arduino-ESP32 3.3.8の固定と、factory/customを分離したPlatformIO環境 |
-| 時計画面 | 実装・実機確認済み、再起動後の保持は確認待ち | 位置を固定した時刻欄、英語の曜日・日付、AM/PM付き12時間・24時間表示の選択と永続化 |
+| 時計画面 | 実装・実機確認済み、再起動後の保持は確認待ち | 位置を固定した時刻欄、コンパクトな`yyyy.mm.dd. ddd`日付、AM/PM付き12時間・24時間表示の選択と永続化 |
 | 7セグ風時計フォント | 実装・実機確認済み | DSEG7 Classic Regularの36px数字・エラー用ハイフンサブセットを使用し、両方の時計形式で視認性、文字切れ、項目ごとの中央揃えを確認済み |
 | RTC | 実装・実機確認済み | 時計画面表示時のRTC再読込と、独立した日付・時刻手動設定画面 |
 | 画面消灯 | 実装・一部実機確認済み | プリセットの変更・保存は確認済み。設定時間どおりの動作と再起動後の保持は確認待ち |
@@ -417,6 +419,8 @@ flowchart TD
 
 - [x] 12時間・24時間表示の両方で、DSEG7の視認性、文字切れ、項目ごとの
   中央揃えを確認する。
+- [x] `yyyy.mm.dd. ddd`形式の日付が1行で表示され、その下の領域が空いている
+  ことを確認する。
 
 #### 将来の候補
 

@@ -58,13 +58,7 @@ const char *const kNtpServer2 = "time.google.com";
 const char *const kNtpServer3 = "ntp.nict.jp";
 
 const char *const kWeekdays[] = {
-    "SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY",
-    "THURSDAY", "FRIDAY", "SATURDAY",
-};
-
-const char *const kMonths[] = {
-    "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE",
-    "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER",
+    "SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT",
 };
 
 enum class SettingField : uint8_t {
@@ -113,8 +107,7 @@ lv_obj_t *hour_label;
 lv_obj_t *minute_label;
 lv_obj_t *second_label;
 lv_obj_t *meridiem_label;
-lv_obj_t *weekday_label;
-lv_obj_t *date_label;
+lv_obj_t *date_line_label;
 lv_obj_t *battery_label;
 lv_obj_t *deploy_mode_clock_label;
 lv_obj_t *deploy_mode_button_label;
@@ -408,8 +401,7 @@ void showClockError(const char *message)
     lv_label_set_text(hour_label, "--");
     lv_label_set_text(minute_label, "--");
     lv_label_set_text(second_label, "--");
-    lv_label_set_text(weekday_label, "CLOCK ERROR");
-    lv_label_set_text(date_label, message);
+    lv_label_set_text(date_line_label, message);
     lv_obj_add_flag(meridiem_label, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -452,10 +444,9 @@ void updateClock(lv_timer_t *)
     lv_label_set_text_fmt(hour_label, "%02d", display_hour);
     lv_label_set_text_fmt(minute_label, "%02d", timeinfo.tm_min);
     lv_label_set_text_fmt(second_label, "%02d", timeinfo.tm_sec);
-    lv_label_set_text(weekday_label, kWeekdays[timeinfo.tm_wday]);
-    lv_label_set_text_fmt(date_label, "%s %02d, %04d",
-                          kMonths[timeinfo.tm_mon], timeinfo.tm_mday,
-                          timeinfo.tm_year + 1900);
+    lv_label_set_text_fmt(date_line_label, "%04d.%02d.%02d. %s",
+                          timeinfo.tm_year + 1900, timeinfo.tm_mon + 1,
+                          timeinfo.tm_mday, kWeekdays[timeinfo.tm_wday]);
 }
 
 const char *batterySymbol(int percent)
@@ -1760,15 +1751,10 @@ void createClockScreen()
     lv_obj_align(meridiem_label, LV_ALIGN_CENTER, 100, 8);
     lv_obj_add_flag(meridiem_label, LV_OBJ_FLAG_HIDDEN);
 
-    weekday_label = lv_label_create(clock_screen);
-    lv_obj_set_style_text_font(weekday_label, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(weekday_label, lv_color_hex(kAccentColor), 0);
-    lv_obj_align(weekday_label, LV_ALIGN_CENTER, 0, 30);
-
-    date_label = lv_label_create(clock_screen);
-    lv_obj_set_style_text_font(date_label, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(date_label, lv_color_hex(kMutedColor), 0);
-    lv_obj_align(date_label, LV_ALIGN_CENTER, 0, 62);
+    date_line_label = lv_label_create(clock_screen);
+    lv_obj_set_style_text_font(date_line_label, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(date_line_label, lv_color_hex(kAccentColor), 0);
+    lv_obj_align(date_line_label, LV_ALIGN_CENTER, 0, 34);
 
     time_sync_label = lv_label_create(clock_screen);
     lv_label_set_text(time_sync_label, "");
