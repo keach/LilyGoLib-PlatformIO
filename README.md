@@ -21,16 +21,16 @@ UTC+9).
 | Area | Status | Details |
 | --- | --- | --- |
 | Build foundation | Implemented and build-tested | Pinned Arduino-ESP32 3.3.8 toolchain and separate factory/custom PlatformIO environments |
-| Clock face | Implemented and build-tested; 24-hour layout device-tested | Fixed-position time fields, English weekday/date, and persistent 12-hour/24-hour selection with AM/PM |
+| Clock face | Implemented and device-tested; reboot persistence pending | Fixed-position time fields, English weekday/date, and persistent 12-hour/24-hour selection with AM/PM |
 | RTC | Implemented and device-tested | RTC refresh whenever the clock face appears and a separate manual date/time screen |
-| Display timeout | Implemented and build-tested; default behavior device-tested | Persistent preset selection for clock and settings screen timeouts, with guarded touch wake |
+| Display timeout | Implemented and partially device-tested | Preset selection and saving are device-tested; configured timing and reboot persistence remain to be verified |
 | Light Sleep | Implemented and build-tested; default behavior device-tested | Persistent preset delay after display-off and wake by touch or power button |
-| Deploy mode | Implemented and build-tested; device verification pending | Temporary `POWER & DISPLAY` setting that keeps the display and CPU awake for USB uploads and resets after reboot |
+| Deploy mode | Implemented and partially device-tested | Display-off suppression is device-tested; firmware upload and return to normal power saving remain to be verified |
 | Battery status | Implemented and device-tested | Compact always-visible upper-left battery, charging, USB-power, and low-battery state |
 | Wi-Fi and NTP | Implemented and device-tested | Wi-Fi status, reconnect/disconnect controls, multiple fixed networks, persistent automatic synchronization, manual `SYNC NOW`, RTC update, and ownership-aware radio shutdown |
 | Brightness setting | Implemented and device-tested | Separate live-preview screen with `SAVE`/`CANCEL` and NVS persistence |
 | Settings hub | Implemented and build-tested | The clock-screen `SET` button opens `DATE & TIME`, `POWER & DISPLAY`, `BRIGHTNESS`, and a grouped `WI-FI & NTP` submenu |
-| Restore defaults | Implemented and build-tested; device verification pending | Confirmation screen restores brightness, display timeouts, clock format, and automatic time sync defaults immediately and in NVS |
+| Restore defaults | Implemented and device-tested | Confirmation screen restores brightness, display timeouts, clock format, and automatic time sync defaults immediately and in NVS |
 | Documentation | Implemented | Project-specific English and Japanese README |
 
 ### Roadmap
@@ -43,6 +43,18 @@ UTC+9).
 - [x] Configurable delay before Light Sleep
 - [x] 12-hour/24-hour clock selection
 - [x] Restore-default-settings action
+
+#### Device verification for the current milestone
+
+- [x] Open the `POWER & DISPLAY` screen from the settings hub.
+- [x] Verify that DEPLOY MODE prevents the display from turning off.
+- [x] Change and save all three timeout settings.
+- [x] Verify 12-hour clock display with AM/PM.
+- [x] Restore settings to their defaults from the confirmation screen.
+- [ ] Verify display-off and Light Sleep at each configured timeout.
+- [ ] Verify timeout and clock-format persistence after reboot.
+- [ ] Upload firmware while DEPLOY MODE is enabled.
+- [ ] Verify that disabling DEPLOY MODE restores display-off and Light Sleep.
 
 #### Following milestone: clock and interaction foundation
 
@@ -344,16 +356,16 @@ flowchart TD
 | 領域 | 状況 | 内容 |
 | --- | --- | --- |
 | ビルド基盤 | 実装・ビルド確認済み | Arduino-ESP32 3.3.8の固定と、factory/customを分離したPlatformIO環境 |
-| 時計画面 | 実装・ビルド確認済み、24時間表示は実機確認済み | 位置を固定した時刻欄、英語の曜日・日付、AM/PM付き12時間・24時間表示の選択と永続化 |
+| 時計画面 | 実装・実機確認済み、再起動後の保持は確認待ち | 位置を固定した時刻欄、英語の曜日・日付、AM/PM付き12時間・24時間表示の選択と永続化 |
 | RTC | 実装・実機確認済み | 時計画面表示時のRTC再読込と、独立した日付・時刻手動設定画面 |
-| 画面消灯 | 実装・ビルド確認済み、初期値は実機確認済み | 時計画面と設定画面それぞれのプリセット式消灯時間設定・永続化と、誤操作を防ぐタッチ復帰 |
+| 画面消灯 | 実装・一部実機確認済み | プリセットの変更・保存は確認済み。設定時間どおりの動作と再起動後の保持は確認待ち |
 | Light Sleep | 実装・ビルド確認済み、初期値は実機確認済み | 消灯後のプリセット式待機時間設定・永続化と、タッチまたは電源ボタンでの復帰 |
-| デプロイモード | 実装・ビルド確認済み、実機確認待ち | USB書き込み用に画面とCPUを起動状態に保つ一時的な`POWER & DISPLAY`設定。再起動時は解除 |
+| デプロイモード | 実装・一部実機確認済み | 画面消灯の抑止は確認済み。実機書き込みと通常の省電力動作への復帰は確認待ち |
 | バッテリー状態 | 実装・実機確認済み | 左上に常時表示する簡潔な残量、充電、USB給電、低残量表示 |
 | Wi-Fi・NTP | 実装・実機確認済み | Wi-Fi状態、再接続・切断操作、複数固定ネットワーク、自動同期の永続化、手動`SYNC NOW`、RTC更新、接続元に応じたWi-Fi停止 |
 | 明るさ設定 | 実装・実機確認済み | 即時プレビュー、`SAVE`/`CANCEL`、NVS永続化を備えた独立画面 |
 | 設定ハブ | 実装・ビルド確認済み | 時計画面の`SET`から`DATE & TIME`、`POWER & DISPLAY`、`BRIGHTNESS`、および`WI-FI & NTP`サブメニューを開く構成 |
-| 設定初期化 | 実装・ビルド確認済み、実機確認待ち | 確認画面を経て、明るさ・画面時間・時計形式・NTP自動同期を即時およびNVS上で初期値へ戻す |
+| 設定初期化 | 実装・実機確認済み | 確認画面を経て、明るさ・画面時間・時計形式・NTP自動同期を即時およびNVS上で初期値へ戻す |
 | ドキュメント | 実装済み | このプロジェクト専用の英語・日本語README |
 
 ### ロードマップ
@@ -366,6 +378,18 @@ flowchart TD
 - [x] Light Sleepまでの待機時間設定
 - [x] 12時間・24時間表示の選択
 - [x] 設定を初期値へ戻す操作
+
+#### 現在のマイルストーンの実機確認
+
+- [x] 設定ハブから`POWER & DISPLAY`画面を開く。
+- [x] DEPLOY MODE中に画面が消灯しないことを確認する。
+- [x] 3種類のタイムアウト値を変更して保存する。
+- [x] 12時間表示とAM/PM表示を確認する。
+- [x] 確認画面から設定を初期値へ戻す。
+- [ ] 設定した各時間どおりに画面消灯・Light Sleepへ移行することを確認する。
+- [ ] 再起動後もタイムアウト値と時計形式が保持されることを確認する。
+- [ ] DEPLOY MODEを有効にした状態でファームウェアを書き込む。
+- [ ] DEPLOY MODEを解除すると画面消灯とLight Sleepが再開することを確認する。
 
 #### 次のマイルストーン：時計・操作基盤の仕上げ
 
