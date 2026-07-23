@@ -21,11 +21,11 @@ UTC+9).
 | Area | Status | Details |
 | --- | --- | --- |
 | Build foundation | Implemented and build-tested | Pinned Arduino-ESP32 3.3.8 toolchain and separate factory/custom PlatformIO environments |
-| Clock face | Implemented and device-tested; reboot persistence pending | Fixed-position time fields, compact `yyyy.mm.dd. ddd` date, and persistent 12-hour/24-hour selection with AM/PM |
+| Clock face | Implemented and device-tested | Fixed-position time fields, compact `yyyy.mm.dd. ddd` date, and reboot-persistent 12-hour/24-hour selection with AM/PM |
 | Seven-segment clock font | Implemented and device-tested | 36 px DSEG7 Classic Regular subset for digits and error dashes, with verified legibility, clipping, and independent field centering in both clock formats |
 | RTC | Implemented and device-tested | RTC refresh whenever the clock face appears and a separate manual date/time screen |
-| Display timeout | Implemented and partially device-tested | Preset selection and saving are device-tested; configured timing and reboot persistence remain to be verified |
-| Light Sleep | Implemented and build-tested; default behavior device-tested | Persistent preset delay after display-off and wake by touch or power button |
+| Display timeout | Implemented and partially device-tested | Preset selection, saving, and reboot persistence are device-tested; configured timing remains to be verified |
+| Light Sleep | Implemented and partially device-tested | Preset selection and reboot persistence are device-tested; configured timing remains to be verified |
 | Deploy mode | Implemented and device-tested | Display-off suppression, firmware upload while enabled, reboot reset, and return to normal display-off and Light Sleep are verified |
 | Battery status | Implemented and device-tested | Compact always-visible upper-left battery, charging, USB-power, and low-battery state |
 | Wi-Fi and NTP | Implemented and device-tested | Wi-Fi status, reconnect/disconnect controls, multiple fixed networks, persistent automatic synchronization, manual `SYNC NOW`, RTC update, and ownership-aware radio shutdown |
@@ -53,7 +53,7 @@ UTC+9).
 - [x] Verify 12-hour clock display with AM/PM.
 - [x] Restore settings to their defaults from the confirmation screen.
 - [ ] Verify display-off and Light Sleep at each configured timeout.
-- [ ] Verify timeout and clock-format persistence after reboot.
+- [x] Verify timeout and clock-format persistence after reboot.
 - [x] Upload firmware while DEPLOY MODE is enabled.
 - [x] Verify that disabling DEPLOY MODE or rebooting restores display-off and Light Sleep.
 
@@ -373,11 +373,11 @@ flowchart TD
 | 領域 | 状況 | 内容 |
 | --- | --- | --- |
 | ビルド基盤 | 実装・ビルド確認済み | Arduino-ESP32 3.3.8の固定と、factory/customを分離したPlatformIO環境 |
-| 時計画面 | 実装・実機確認済み、再起動後の保持は確認待ち | 位置を固定した時刻欄、コンパクトな`yyyy.mm.dd. ddd`日付、AM/PM付き12時間・24時間表示の選択と永続化 |
+| 時計画面 | 実装・実機確認済み | 位置を固定した時刻欄、コンパクトな`yyyy.mm.dd. ddd`日付、再起動後も保持されるAM/PM付き12時間・24時間表示の選択 |
 | 7セグ風時計フォント | 実装・実機確認済み | DSEG7 Classic Regularの36px数字・エラー用ハイフンサブセットを使用し、両方の時計形式で視認性、文字切れ、項目ごとの中央揃えを確認済み |
 | RTC | 実装・実機確認済み | 時計画面表示時のRTC再読込と、独立した日付・時刻手動設定画面 |
-| 画面消灯 | 実装・一部実機確認済み | プリセットの変更・保存は確認済み。設定時間どおりの動作と再起動後の保持は確認待ち |
-| Light Sleep | 実装・ビルド確認済み、初期値は実機確認済み | 消灯後のプリセット式待機時間設定・永続化と、タッチまたは電源ボタンでの復帰 |
+| 画面消灯 | 実装・一部実機確認済み | プリセットの変更・保存と再起動後の保持は確認済み。設定時間どおりの動作は確認待ち |
+| Light Sleep | 実装・一部実機確認済み | プリセットの変更と再起動後の保持は確認済み。設定時間どおりの動作は確認待ち |
 | デプロイモード | 実装・実機確認済み | 画面消灯の抑止、有効中の実機書き込み、再起動時の解除、通常の画面消灯・Light Sleepへの復帰を確認済み |
 | バッテリー状態 | 実装・実機確認済み | 左上に常時表示する簡潔な残量、充電、USB給電、低残量表示 |
 | Wi-Fi・NTP | 実装・実機確認済み | Wi-Fi状態、再接続・切断操作、複数固定ネットワーク、自動同期の永続化、手動`SYNC NOW`、RTC更新、接続元に応じたWi-Fi停止 |
@@ -405,7 +405,7 @@ flowchart TD
 - [x] 12時間表示とAM/PM表示を確認する。
 - [x] 確認画面から設定を初期値へ戻す。
 - [ ] 設定した各時間どおりに画面消灯・Light Sleepへ移行することを確認する。
-- [ ] 再起動後もタイムアウト値と時計形式が保持されることを確認する。
+- [x] 再起動後もタイムアウト値と時計形式が保持されることを確認する。
 - [x] DEPLOY MODEを有効にした状態でファームウェアを書き込む。
 - [x] DEPLOY MODEの解除または再起動後に、画面消灯とLight Sleepが再開することを確認する。
 
