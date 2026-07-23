@@ -36,39 +36,19 @@ UTC+9).
 
 ### Roadmap
 
-#### Current milestone: settings and deployment
+#### Current verification
 
-- [x] DEPLOY MODE to keep the display and CPU awake during firmware upload
-- [x] Configurable clock-screen timeout
-- [x] Configurable settings-screen timeout
-- [x] Configurable delay before Light Sleep
-- [x] 12-hour/24-hour clock selection
-- [x] Restore-default-settings action
+- [ ] Verify display-off and Light Sleep at every configured timeout preset
 
-#### Device verification for the current milestone
+#### Current milestone: clock and interaction foundation
 
-- [x] Open the `POWER & DISPLAY` screen from the settings hub.
-- [x] Verify that DEPLOY MODE prevents the display from turning off.
-- [x] Change and save all three timeout settings.
-- [x] Verify 12-hour clock display with AM/PM.
-- [x] Restore settings to their defaults from the confirmation screen.
-- [ ] Verify display-off and Light Sleep at each configured timeout.
-- [x] Verify timeout and clock-format persistence after reboot.
-- [x] Upload firmware while DEPLOY MODE is enabled.
-- [x] Verify that disabling DEPLOY MODE or rebooting restores display-off and Light Sleep.
-
-#### Following milestone: clock and interaction foundation
-
-- [x] Apply a seven-segment-style clock font
 - [ ] Power on/off with a long press of the crown
 - [ ] Japanese font and text-rendering foundation
 
-#### Device verification for the clock foundation
+#### Following milestone: network information
 
-- [x] Verify DSEG7 digit legibility, clipping, and per-field centering in both
-  12-hour and 24-hour modes.
-- [x] Verify the single-line `yyyy.mm.dd. ddd` date layout and the cleared area
-  below it.
+- [ ] Weather forecast API integration and display
+- [ ] Gotify background notifications and pop-up display
 
 #### Later candidates
 
@@ -388,39 +368,19 @@ flowchart TD
 
 ### ロードマップ
 
-#### 現在のマイルストーン：設定とデプロイ
+#### 現在の実機確認
 
-- [x] DEPLOY MODEへの切替（書き込み中は画面消灯とLight Sleepを抑止）
-- [x] 時計画面の消灯時間設定
-- [x] 設定画面の消灯時間設定
-- [x] Light Sleepまでの待機時間設定
-- [x] 12時間・24時間表示の選択
-- [x] 設定を初期値へ戻す操作
+- [ ] すべての設定プリセットどおりに画面消灯・Light Sleepへ移行することを確認
 
-#### 現在のマイルストーンの実機確認
+#### 現在のマイルストーン：時計・操作基盤の仕上げ
 
-- [x] 設定ハブから`POWER & DISPLAY`画面を開く。
-- [x] DEPLOY MODE中に画面が消灯しないことを確認する。
-- [x] 3種類のタイムアウト値を変更して保存する。
-- [x] 12時間表示とAM/PM表示を確認する。
-- [x] 確認画面から設定を初期値へ戻す。
-- [ ] 設定した各時間どおりに画面消灯・Light Sleepへ移行することを確認する。
-- [x] 再起動後もタイムアウト値と時計形式が保持されることを確認する。
-- [x] DEPLOY MODEを有効にした状態でファームウェアを書き込む。
-- [x] DEPLOY MODEの解除または再起動後に、画面消灯とLight Sleepが再開することを確認する。
-
-#### 次のマイルストーン：時計・操作基盤の仕上げ
-
-- [x] 時刻部分への7セグ風フォント適用
 - [ ] 竜頭長押しによる電源オン・オフ
 - [ ] 日本語フォント・表示基盤
 
-#### 時計・操作基盤の実機確認
+#### 次のマイルストーン：ネットワーク情報
 
-- [x] 12時間・24時間表示の両方で、DSEG7の視認性、文字切れ、項目ごとの
-  中央揃えを確認する。
-- [x] `yyyy.mm.dd. ddd`形式の日付が1行で表示され、その下の領域が空いている
-  ことを確認する。
+- [ ] 天気予報APIからの取得と画面表示
+- [ ] Gotifyのバックグラウンド通知とポップアップ表示
 
 #### 将来の候補
 
