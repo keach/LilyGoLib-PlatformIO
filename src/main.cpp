@@ -13,7 +13,7 @@
 
 #include "wifi_credentials_types.h"
 
-LV_FONT_DECLARE(lv_font_dseg_36);
+LV_FONT_DECLARE(lv_font_watch_digits_36);
 
 #if __has_include("wifi_credentials.h")
 #include "wifi_credentials.h"
@@ -1736,13 +1736,13 @@ void createClockScreen()
     lv_obj_add_flag(deploy_mode_clock_label, LV_OBJ_FLAG_HIDDEN);
 
     hour_label = createClockTimeLabel(
-        "--", -72, 60, &lv_font_dseg_36);
+        "--", -72, 60, &lv_font_watch_digits_36);
     createClockTimeLabel(":", -36, 12, &lv_font_montserrat_40);
     minute_label = createClockTimeLabel(
-        "--", 0, 60, &lv_font_dseg_36);
+        "--", 0, 60, &lv_font_watch_digits_36);
     createClockTimeLabel(":", 36, 12, &lv_font_montserrat_40);
     second_label = createClockTimeLabel(
-        "--", 72, 60, &lv_font_dseg_36);
+        "--", 72, 60, &lv_font_watch_digits_36);
 
     meridiem_label = lv_label_create(clock_screen);
     lv_label_set_text(meridiem_label, "AM");

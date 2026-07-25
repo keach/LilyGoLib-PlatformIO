@@ -22,7 +22,7 @@ UTC+9).
 | --- | --- | --- |
 | Build foundation | Implemented and build-tested | Pinned Arduino-ESP32 3.3.8 toolchain and separate factory/custom PlatformIO environments |
 | Clock face | Implemented and device-tested | Fixed-position time fields, compact `yyyy.mm.dd. ddd` date, and reboot-persistent 12-hour/24-hour selection with AM/PM |
-| Seven-segment clock font | Implemented and device-tested | 36 px DSEG7 Classic Regular subset for digits and error dashes, with verified legibility, clipping, and independent field centering in both clock formats |
+| Custom seven-segment clock font | Implemented and device-tested | 36 px T-Watch Custom Digits derived from DSEG7 Classic Bold, with `b`/`q` forms mapped to `6`/`9`, no clipping, and independent field centering verified |
 | RTC | Implemented and device-tested | RTC refresh whenever the clock face appears and a separate manual date/time screen |
 | Display timeout | Implemented and partially device-tested | Preset selection, saving, and reboot persistence are device-tested; configured timing remains to be verified |
 | Light Sleep | Implemented and partially device-tested | Preset selection and reboot persistence are device-tested; configured timing remains to be verified |
@@ -39,6 +39,8 @@ UTC+9).
 #### Current verification
 
 - [ ] Verify display-off and Light Sleep at every configured timeout preset
+- [x] Verify T-Watch Custom Digits legibility, `b`/`q` forms, clipping, and per-field centering in
+  both 12-hour and 24-hour modes
 
 #### Current milestone: clock and interaction foundation
 
@@ -80,12 +82,22 @@ The project pins the pioarduino ESP32 platform that provides Arduino-ESP32
 
 ### Font license
 
-The clock digits use a 36 px bitmap subset generated from
-[DSEG7 Classic Regular](https://github.com/keshikan/DSEG). DSEG is Copyright
-(c) 2020 keshikan and is distributed under the SIL Open Font License 1.1.
-The required license text is included in
-`src/fonts/DSEG-LICENSE.txt`; only `-` and `0` through `9` are embedded in the
-firmware.
+The clock uses T-Watch Custom Digits, a Modified Version derived from
+[DSEG7 Classic Bold](https://github.com/keshikan/DSEG). It maps the source
+font's `b` and `q` glyphs to `6` and `9`. The Modified Version does not use
+the Reserved Font Name "DSEG" as its primary name. The source font is
+Copyright (c) 2020 keshikan and is distributed under the SIL Open Font
+License 1.1. The required license text is included in
+`src/fonts/DSEG-LICENSE.txt`.
+
+After downloading the official DSEG7 Classic Bold TTF, regenerate the
+embedded 36 px subset with:
+
+```sh
+node support/generate_clock_font.mjs /path/to/DSEG7Classic-Bold.ttf
+```
+
+Only `-` and `0` through `9` are embedded in the firmware.
 
 ### Wi-Fi configuration
 
@@ -354,7 +366,7 @@ flowchart TD
 | --- | --- | --- |
 | ビルド基盤 | 実装・ビルド確認済み | Arduino-ESP32 3.3.8の固定と、factory/customを分離したPlatformIO環境 |
 | 時計画面 | 実装・実機確認済み | 位置を固定した時刻欄、コンパクトな`yyyy.mm.dd. ddd`日付、再起動後も保持されるAM/PM付き12時間・24時間表示の選択 |
-| 7セグ風時計フォント | 実装・実機確認済み | DSEG7 Classic Regularの36px数字・エラー用ハイフンサブセットを使用し、両方の時計形式で視認性、文字切れ、項目ごとの中央揃えを確認済み |
+| 独自7セグ風時計フォント | 実装・実機確認済み | DSEG7 Classic Boldを元にした36pxのT-Watch Custom Digitsを使用し、`6`/`9`へ`b`/`q`形を割り当て、文字切れがないことと項目ごとの中央揃えを確認済み |
 | RTC | 実装・実機確認済み | 時計画面表示時のRTC再読込と、独立した日付・時刻手動設定画面 |
 | 画面消灯 | 実装・一部実機確認済み | プリセットの変更・保存と再起動後の保持は確認済み。設定時間どおりの動作は確認待ち |
 | Light Sleep | 実装・一部実機確認済み | プリセットの変更と再起動後の保持は確認済み。設定時間どおりの動作は確認待ち |
@@ -371,6 +383,8 @@ flowchart TD
 #### 現在の実機確認
 
 - [ ] すべての設定プリセットどおりに画面消灯・Light Sleepへ移行することを確認
+- [x] 12時間・24時間表示の両方で、T-Watch Custom Digitsの視認性、
+  `b`/`q`形、文字切れ、項目ごとの中央揃えを確認
 
 #### 現在のマイルストーン：時計・操作基盤の仕上げ
 
@@ -411,11 +425,21 @@ pioarduinoのESP32プラットフォームを固定しています。
 
 ### フォントライセンス
 
-時計の数字には、[DSEG7 Classic Regular](https://github.com/keshikan/DSEG)から
-生成した36pxのビットマップサブセットを使用します。DSEGはCopyright (c) 2020
-keshikanで、SIL Open Font License 1.1の下で配布されています。必要なライセンス
-全文は`src/fonts/DSEG-LICENSE.txt`に収録し、ファームウェアには`-`と`0`〜`9`だけを
-組み込んでいます。
+時計には、[DSEG7 Classic Bold](https://github.com/keshikan/DSEG)を元にした
+Modified Version「T-Watch Custom Digits」を使用します。元フォントの`b`と`q`を
+`6`と`9`へ割り当てており、Modified Versionの主要名称にはReserved Font Name
+「DSEG」を使用しません。元フォントはCopyright (c) 2020 keshikanで、SIL Open
+Font License 1.1の下で配布されています。必要なライセンス全文は
+`src/fonts/DSEG-LICENSE.txt`に収録しています。
+
+公式のDSEG7 Classic Bold TTFを取得後、次のコマンドで組み込み用36pxサブセットを
+再生成できます。
+
+```sh
+node support/generate_clock_font.mjs /path/to/DSEG7Classic-Bold.ttf
+```
+
+ファームウェアには`-`と`0`〜`9`だけを組み込んでいます。
 
 ### Wi-Fi設定
 
