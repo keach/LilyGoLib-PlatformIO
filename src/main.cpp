@@ -39,6 +39,8 @@ constexpr uint32_t kNtpSyncTimeoutMs = 15 * 1000;
 constexpr uint32_t kWiFiRetryIntervalMs = 15 * 60 * 1000;
 constexpr uint32_t kSuccessNotificationMs = 3 * 1000;
 constexpr uint32_t kWarningNotificationMs = 8 * 1000;
+constexpr uint32_t kStartupScreenMinimumMs = 3000;
+constexpr uint32_t kShutdownScreenDurationMs = 3000;
 constexpr time_t kNtpSyncIntervalSeconds = 24 * 60 * 60;
 constexpr time_t kMinimumValidEpoch = 1577836800;  // 2020-01-01 UTC
 constexpr uint8_t kDefaultBrightness = 180;
@@ -103,6 +105,8 @@ lv_obj_t *date_time_screen;
 lv_obj_t *brightness_screen;
 lv_obj_t *time_sync_screen;
 lv_obj_t *wifi_screen;
+lv_obj_t *startup_screen;
+lv_obj_t *power_off_screen;
 lv_obj_t *hour_label;
 lv_obj_t *minute_label;
 lv_obj_t *second_label;
@@ -179,6 +183,7 @@ bool ntp_config_warning_shown = false;
 bool automatic_time_sync_enabled = true;
 bool wifi_connection_in_progress = false;
 bool time_sync_owns_wifi_connection = false;
+bool power_off_in_progress = false;
 
 void syncClockFromRtc();
 void updateBatteryStatus(lv_timer_t *);
@@ -329,6 +334,28 @@ void enterLightSleep()
                   woke_by_touch ? "touch" : "power button");
 }
 
+void powerOff()
+{
+    if (power_off_in_progress) {
+        return;
+    }
+
+    power_off_in_progress = true;
+    Serial.println("Power key long press: shutting down");
+
+    WiFi.disconnect(true, false);
+    lv_obj_add_flag(wake_overlay, LV_OBJ_FLAG_HIDDEN);
+    screen_on = true;
+    lv_screen_load(power_off_screen);
+    instance.setBrightness(active_brightness);
+    lv_refr_now(nullptr);
+
+    // Keep the confirmation visible briefly before the AXP2101 cuts power.
+    delay(kShutdownScreenDurationMs);
+    Serial.flush();
+    instance.pmu.shutdown();
+}
+
 void deviceEventCallback(DeviceEvent_t event, void *params, void *)
 {
     if (event != POWER_EVENT) {
@@ -338,6 +365,11 @@ void deviceEventCallback(DeviceEvent_t event, void *params, void *)
     const PMUEventType_t power_event = instance.getPMUEventType(params);
     if (power_event == PMU_EVENT_KEY_CLICKED) {
         wakeScreen();
+        return;
+    }
+
+    if (power_event == PMU_EVENT_KEY_LONG_PRESSED) {
+        powerOff();
         return;
     }
 
@@ -2239,6 +2271,54 @@ void createWakeOverlay()
                         LV_EVENT_PRESSED, nullptr);
 }
 
+void createPowerOffScreen()
+{
+    power_off_screen = lv_obj_create(nullptr);
+    styleScreen(power_off_screen);
+
+    lv_obj_t *title = lv_label_create(power_off_screen);
+    lv_label_set_text(title, "GRACEFUL SHUTDOWN");
+    lv_obj_set_width(title, 204);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(kPrimaryColor), 0);
+    lv_obj_set_pos(title, 18, 24);
+
+    lv_obj_t *status = lv_label_create(power_off_screen);
+    lv_label_set_text(status, "CLOSING CONNECTIONS SAFELY...");
+    lv_obj_set_width(status, 204);
+    lv_label_set_long_mode(status, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_font(status, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(status, lv_color_hex(kAccentColor), 0);
+    lv_obj_set_pos(status, 18, 52);
+
+    lv_obj_t *hint = lv_label_create(power_off_screen);
+    lv_label_set_text(hint, "HOLD CROWN TO TURN ON");
+    lv_obj_set_width(hint, 204);
+    lv_obj_set_style_text_font(hint, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(hint, lv_color_hex(kMutedColor), 0);
+    lv_obj_set_pos(hint, 18, 78);
+}
+
+void createStartupScreen()
+{
+    startup_screen = lv_obj_create(nullptr);
+    styleScreen(startup_screen);
+
+    lv_obj_t *title = lv_label_create(startup_screen);
+    lv_label_set_text(title, "T-WATCH S3 CUSTOM");
+    lv_obj_set_width(title, 204);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(kPrimaryColor), 0);
+    lv_obj_set_pos(title, 18, 24);
+
+    lv_obj_t *status = lv_label_create(startup_screen);
+    lv_label_set_text(status, "INITIALIZING...");
+    lv_obj_set_width(status, 204);
+    lv_obj_set_style_text_font(status, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(status, lv_color_hex(kAccentColor), 0);
+    lv_obj_set_pos(status, 18, 52);
+}
+
 }  // namespace
 
 void setup()
@@ -2247,12 +2327,22 @@ void setup()
     setenv("TZ", kTimeZone, 1);
     tzset();
     instance.begin();
+    instance.pmu.setPowerKeyPressOffTime(XPOWERS_POWEROFF_4S);
+    instance.pmu.setPowerKeyPressOnTime(XPOWERS_POWERON_2S);
+    instance.pmu.setLongPressPowerOFF();
+    instance.pmu.disableLongPressShutdown();
     beginLvglHelper(instance);
     loadBrightnessSetting();
     loadTimeSyncSettings();
     loadPowerDisplaySettings();
 
     createClockScreen();
+    createStartupScreen();
+    lv_screen_load(startup_screen);
+    instance.setBrightness(active_brightness);
+    lv_refr_now(nullptr);
+    const uint32_t startup_screen_started_ms = millis();
+
     createSettingsHubScreen();
     createPowerDisplayScreen();
     createTimeoutSettingsScreen();
@@ -2263,6 +2353,7 @@ void setup()
     createTimeSyncScreen();
     createWiFiScreen();
     createWakeOverlay();
+    createPowerOffScreen();
     syncClockFromRtc();
     updateBatteryStatus(nullptr);
     lv_timer_create(updateClock, 250, nullptr);
@@ -2271,8 +2362,16 @@ void setup()
 
     instance.onEvent(deviceEventCallback, POWER_EVENT, nullptr);
     sntp_set_time_sync_notification_cb(ntpTimeAvailableCallback);
+
+    while (millis() - startup_screen_started_ms <
+           kStartupScreenMinimumMs) {
+        lv_timer_handler();
+        delay(5);
+    }
+
+    lv_screen_load(clock_screen);
+    lv_refr_now(nullptr);
     last_activity_ms = millis();
-    instance.setBrightness(active_brightness);
     requestTimeSyncIfDue();
 }
 
@@ -2280,6 +2379,12 @@ void loop()
 {
     instance.loop();
     lv_timer_handler();
+
+    if (power_off_in_progress) {
+        delay(1000);
+        return;
+    }
+
     processWiFiConnection();
     processTimeSync();
     updateTimeSyncNotification();

@@ -27,6 +27,7 @@ UTC+9).
 | Display timeout | Implemented and partially device-tested | Preset selection, saving, and reboot persistence are device-tested; configured timing remains to be verified |
 | Light Sleep | Implemented and partially device-tested | Preset selection and reboot persistence are device-tested; configured timing remains to be verified |
 | Deploy mode | Implemented and device-tested | Display-off suppression, firmware upload while enabled, reboot reset, and return to normal display-off and Light Sleep are verified |
+| Power on/off | Implemented and device-tested | A non-clipped, left-aligned three-second startup screen precedes the clock; a 4-second crown hold shows a three-second graceful-shutdown screen and powers off through the AXP2101; a 2-second hold powers the watch on; short-press wake remains unchanged |
 | Battery status | Implemented and device-tested | Compact always-visible upper-left battery, charging, USB-power, and low-battery state |
 | Wi-Fi and NTP | Implemented and device-tested | Wi-Fi status, reconnect/disconnect controls, multiple fixed networks, persistent automatic synchronization, manual `SYNC NOW`, RTC update, and ownership-aware radio shutdown |
 | Brightness setting | Implemented and device-tested | Separate live-preview screen with `SAVE`/`CANCEL` and NVS persistence |
@@ -39,12 +40,14 @@ UTC+9).
 #### Current verification
 
 - [ ] Verify display-off and Light Sleep at every configured timeout preset
+- [x] Verify the startup screen, transition to the clock, 4-second power-off,
+  graceful-shutdown screen, 2-second power-on, and unchanged short-press wake behavior
 - [x] Verify T-Watch Custom Digits legibility, `b`/`q` forms, clipping, and per-field centering in
   both 12-hour and 24-hour modes
 
 #### Current milestone: clock and interaction foundation
 
-- [ ] Power on/off with a long press of the crown
+- [x] Power on/off with a long press of the crown
 - [ ] Japanese font and text-rendering foundation
 
 #### Following milestone: network information
@@ -371,6 +374,7 @@ flowchart TD
 | 画面消灯 | 実装・一部実機確認済み | プリセットの変更・保存と再起動後の保持は確認済み。設定時間どおりの動作は確認待ち |
 | Light Sleep | 実装・一部実機確認済み | プリセットの変更と再起動後の保持は確認済み。設定時間どおりの動作は確認待ち |
 | デプロイモード | 実装・実機確認済み | 画面消灯の抑止、有効中の実機書き込み、再起動時の解除、通常の画面消灯・Light Sleepへの復帰を確認済み |
+| 電源オン・オフ | 実装・実機確認済み | 見切れのない左上寄せの起動画面を時計画面の前に3秒表示。竜頭を4秒長押しするとgraceful shutdown画面を3秒表示してAXP2101経由で電源を切り、電源オフ中は2秒長押しで起動。短押しの画面復帰も従来どおり |
 | バッテリー状態 | 実装・実機確認済み | 左上に常時表示する簡潔な残量、充電、USB給電、低残量表示 |
 | Wi-Fi・NTP | 実装・実機確認済み | Wi-Fi状態、再接続・切断操作、複数固定ネットワーク、自動同期の永続化、手動`SYNC NOW`、RTC更新、接続元に応じたWi-Fi停止 |
 | 明るさ設定 | 実装・実機確認済み | 即時プレビュー、`SAVE`/`CANCEL`、NVS永続化を備えた独立画面 |
@@ -383,12 +387,15 @@ flowchart TD
 #### 現在の実機確認
 
 - [ ] すべての設定プリセットどおりに画面消灯・Light Sleepへ移行することを確認
+- [x] 起動画面と時計画面への遷移、4秒長押しによる電源オフ、
+  graceful shutdown画面、2秒長押しによる電源オン、および短押しの
+  画面復帰が従来どおりであることを確認
 - [x] 12時間・24時間表示の両方で、T-Watch Custom Digitsの視認性、
   `b`/`q`形、文字切れ、項目ごとの中央揃えを確認
 
 #### 現在のマイルストーン：時計・操作基盤の仕上げ
 
-- [ ] 竜頭長押しによる電源オン・オフ
+- [x] 竜頭長押しによる電源オン・オフ
 - [ ] 日本語フォント・表示基盤
 
 #### 次のマイルストーン：ネットワーク情報
