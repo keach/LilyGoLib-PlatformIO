@@ -28,6 +28,7 @@ UTC+9).
 | Light Sleep | Implemented and partially device-tested | Preset selection and reboot persistence are device-tested; configured timing remains to be verified |
 | Deploy mode | Implemented and device-tested | Display-off suppression, firmware upload while enabled, reboot reset, and return to normal display-off and Light Sleep are verified |
 | Power on/off | Implemented and device-tested | A non-clipped, left-aligned three-second startup screen precedes the clock; a 4-second crown hold shows a three-second graceful-shutdown screen and powers off through the AXP2101; a 2-second hold powers the watch on; short-press wake remains unchanged |
+| Wrist wake | Implemented and build-tested; device verification pending | BMA423 tilt detection wakes the display during both the screen-off delay and Light Sleep while preserving touch, crown, and timer wake sources |
 | Battery status | Implemented and device-tested | Compact always-visible upper-left battery, charging, USB-power, and low-battery state |
 | Wi-Fi and NTP | Implemented and device-tested | Wi-Fi status, reconnect/disconnect controls, multiple fixed networks, persistent automatic synchronization, manual `SYNC NOW`, RTC update, and ownership-aware radio shutdown |
 | Brightness setting | Implemented and device-tested | Separate live-preview screen with `SAVE`/`CANCEL` and NVS persistence |
@@ -44,6 +45,8 @@ UTC+9).
   graceful-shutdown screen, 2-second power-on, and unchanged short-press wake behavior
 - [x] Verify T-Watch Custom Digits legibility, `b`/`q` forms, clipping, and per-field centering in
   both 12-hour and 24-hour modes
+- [ ] Verify wrist wake during the screen-off delay and Light Sleep, including
+  false-wake behavior and unchanged touch, crown, and timer wake behavior
 
 #### Current milestone: clock and interaction foundation
 
@@ -375,6 +378,7 @@ flowchart TD
 | Light Sleep | 実装・一部実機確認済み | プリセットの変更と再起動後の保持は確認済み。設定時間どおりの動作は確認待ち |
 | デプロイモード | 実装・実機確認済み | 画面消灯の抑止、有効中の実機書き込み、再起動時の解除、通常の画面消灯・Light Sleepへの復帰を確認済み |
 | 電源オン・オフ | 実装・実機確認済み | 見切れのない左上寄せの起動画面を時計画面の前に3秒表示。竜頭を4秒長押しするとgraceful shutdown画面を3秒表示してAXP2101経由で電源を切り、電源オフ中は2秒長押しで起動。短押しの画面復帰も従来どおり |
+| 手首動作での画面復帰 | 実装・ビルド確認済み、実機確認待ち | BMA423の傾き検知により、画面消灯後の待機中とLight Sleep中の両方で画面を復帰。タッチ・竜頭・タイマーによる復帰も維持 |
 | バッテリー状態 | 実装・実機確認済み | 左上に常時表示する簡潔な残量、充電、USB給電、低残量表示 |
 | Wi-Fi・NTP | 実装・実機確認済み | Wi-Fi状態、再接続・切断操作、複数固定ネットワーク、自動同期の永続化、手動`SYNC NOW`、RTC更新、接続元に応じたWi-Fi停止 |
 | 明るさ設定 | 実装・実機確認済み | 即時プレビュー、`SAVE`/`CANCEL`、NVS永続化を備えた独立画面 |
@@ -392,6 +396,8 @@ flowchart TD
   画面復帰が従来どおりであることを確認
 - [x] 12時間・24時間表示の両方で、T-Watch Custom Digitsの視認性、
   `b`/`q`形、文字切れ、項目ごとの中央揃えを確認
+- [ ] 画面消灯後の待機中とLight Sleep中に手首動作で復帰すること、
+  誤復帰の傾向、およびタッチ・竜頭・タイマー復帰に影響がないことを確認
 
 #### 現在のマイルストーン：時計・操作基盤の仕上げ
 

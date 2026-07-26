@@ -47,6 +47,8 @@ constexpr uint8_t kDefaultBrightness = 180;
 constexpr uint8_t kMinimumBrightness = 20;
 constexpr uint8_t kMaximumBrightness = 255;
 constexpr uint8_t kBrightnessStep = 10;
+constexpr uint8_t kBma423LevelTriggeredInterrupt = 0;
+constexpr uint8_t kBma423ActiveLowInterrupt = 0;
 constexpr int kMinimumYear = 2000;
 constexpr int kMaximumYear = 2099;
 
@@ -184,6 +186,7 @@ bool automatic_time_sync_enabled = true;
 bool wifi_connection_in_progress = false;
 bool time_sync_owns_wifi_connection = false;
 bool power_off_in_progress = false;
+bool tilt_wake_available = false;
 
 void syncClockFromRtc();
 void updateBatteryStatus(lv_timer_t *);
@@ -291,6 +294,61 @@ void wakeOverlayCallback(lv_event_t *)
     wakeScreen();
 }
 
+void configureTiltWake()
+{
+    if ((instance.getDeviceProbe() & HW_BMA423_ONLINE) == 0) {
+        Serial.println("Wrist wake unavailable: BMA423 not detected");
+        return;
+    }
+
+    // LilyGoLib enables every BMA423 feature interrupt during startup. Keep
+    // only tilt mapped so unrelated motion events cannot wake the display.
+    instance.sensor.disablePedometerIRQ();
+    instance.sensor.disableWakeupIRQ();
+    instance.sensor.disableAnyNoMotionIRQ();
+    instance.sensor.disableActivityIRQ();
+    instance.sensor.enableAccelerometer();
+
+    const bool feature_enabled =
+        instance.sensor.enableFeature(SensorBMA423::FEATURE_TILT, true);
+    const bool interrupt_enabled = instance.sensor.enableTiltIRQ();
+    instance.sensor.readIrqStatus();
+    tilt_wake_available = feature_enabled && interrupt_enabled;
+    Serial.printf("Wrist wake: %s\n",
+                  tilt_wake_available ? "enabled" : "initialization failed");
+}
+
+bool prepareTiltWakeForLightSleep()
+{
+    if (!tilt_wake_available) {
+        return false;
+    }
+
+    // Power and touch wake pins are active-low. Temporarily make the BMA423
+    // interrupt active-low as well so all three can share EXT1 ANY_LOW.
+    instance.sensor.readIrqStatus();
+    pinMode(SENSOR_INT, INPUT_PULLUP);
+    const bool configured = instance.sensor.configInterrupt(
+        kBma423LevelTriggeredInterrupt,
+        kBma423ActiveLowInterrupt);
+    if (!configured) {
+        pinMode(SENSOR_INT, INPUT_PULLDOWN);
+        Serial.println("Wrist wake: failed to prepare sensor interrupt");
+    }
+    return configured;
+}
+
+void restoreTiltInterruptAfterLightSleep(bool tilt_wake_prepared)
+{
+    if (!tilt_wake_prepared) {
+        return;
+    }
+
+    instance.sensor.readIrqStatus();
+    instance.sensor.configInterrupt();
+    pinMode(SENSOR_INT, INPUT_PULLDOWN);
+}
+
 void enterLightSleep()
 {
     Serial.println("Entering light sleep");
@@ -307,14 +365,25 @@ void enterLightSleep()
         esp_sleep_enable_timer_wakeup(timer_wakeup_us);
     }
 
-    instance.lightSleep(static_cast<WakeupSource_t>(
-        WAKEUP_SRC_POWER_KEY | WAKEUP_SRC_TOUCH_PANEL));
+    const bool tilt_wake_prepared = prepareTiltWakeForLightSleep();
+    const uint32_t wakeup_sources =
+        WAKEUP_SRC_POWER_KEY | WAKEUP_SRC_TOUCH_PANEL |
+        (tilt_wake_prepared ? WAKEUP_SRC_SENSOR : 0);
+    instance.lightSleep(static_cast<WakeupSource_t>(wakeup_sources));
 
     const esp_sleep_wakeup_cause_t wakeup_cause =
         esp_sleep_get_wakeup_cause();
+    const uint64_t ext1_wakeup_status =
+        wakeup_cause == ESP_SLEEP_WAKEUP_EXT1
+            ? esp_sleep_get_ext1_wakeup_status()
+            : 0;
     const bool woke_by_touch =
-        wakeup_cause == ESP_SLEEP_WAKEUP_EXT1 &&
-        (esp_sleep_get_ext1_wakeup_status() & (1ULL << TP_INT)) != 0;
+        (ext1_wakeup_status & (1ULL << TP_INT)) != 0;
+    const bool woke_by_tilt =
+        tilt_wake_prepared &&
+        (ext1_wakeup_status & (1ULL << SENSOR_INT)) != 0;
+
+    restoreTiltInterruptAfterLightSleep(tilt_wake_prepared);
 
     if (timer_wakeup_us != 0) {
         esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
@@ -330,8 +399,11 @@ void enterLightSleep()
     // Keep the overlay in place for a touch wake so the same physical touch
     // cannot activate the SET button or another control after resume.
     wakeScreen(woke_by_touch);
-    Serial.printf("Light sleep wake: %s\n",
-                  woke_by_touch ? "touch" : "power button");
+    const char *wakeup_reason = woke_by_tilt
+                                    ? "tilt"
+                                    : (woke_by_touch ? "touch"
+                                                     : "power button");
+    Serial.printf("Light sleep wake: %s\n", wakeup_reason);
 }
 
 void powerOff()
@@ -358,6 +430,16 @@ void powerOff()
 
 void deviceEventCallback(DeviceEvent_t event, void *params, void *)
 {
+    if (event == SENSOR_EVENT) {
+        if (instance.getSensorEventType(params) == SENSOR_TILT_DETECTED) {
+            Serial.println("Sensor event: tilt detected");
+            if (!screen_on && !power_off_in_progress) {
+                wakeScreen();
+            }
+        }
+        return;
+    }
+
     if (event != POWER_EVENT) {
         return;
     }
@@ -2331,6 +2413,7 @@ void setup()
     instance.pmu.setPowerKeyPressOnTime(XPOWERS_POWERON_2S);
     instance.pmu.setLongPressPowerOFF();
     instance.pmu.disableLongPressShutdown();
+    configureTiltWake();
     beginLvglHelper(instance);
     loadBrightnessSetting();
     loadTimeSyncSettings();
@@ -2361,6 +2444,7 @@ void setup()
     lv_timer_create(updateWiFiScreenStatus, 1000, nullptr);
 
     instance.onEvent(deviceEventCallback, POWER_EVENT, nullptr);
+    instance.onEvent(deviceEventCallback, SENSOR_EVENT, nullptr);
     sntp_set_time_sync_notification_cb(ntpTimeAvailableCallback);
 
     while (millis() - startup_screen_started_ms <
