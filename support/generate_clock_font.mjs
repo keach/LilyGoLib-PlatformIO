@@ -119,7 +119,7 @@ function replaceSevenGlyphBitmap(source) {
     const descriptors = [...source.matchAll(/\.bitmap_index = (\d+)/g)].map(
         (match) => Number(match[1])
     );
-    const sevenGlyphId = 8; // reserved, '-', '0' ... '7'
+    const sevenGlyphId = 9; // reserved, '-', '0' ... '7'
     const start = descriptors[sevenGlyphId];
     const end = descriptors[sevenGlyphId + 1];
     if (!Number.isInteger(start) || !Number.isInteger(end) || end <= start) {
