@@ -54,6 +54,14 @@ bool KitchenTimer::pause(uint32_t now_ms)
     if (state_ != KitchenTimerState::Running) {
         return false;
     }
+
+    // Process expiry before pausing so an elapsed timer cannot become a
+    // zero-duration paused timer and suppress its notification.
+    update(now_ms);
+    if (state_ != KitchenTimerState::Running) {
+        return false;
+    }
+
     paused_remaining_ms_ = remainingMilliseconds(now_ms);
     state_ = KitchenTimerState::Paused;
     return true;
@@ -88,9 +96,10 @@ void KitchenTimer::update(uint32_t now_ms)
 {
     if (state_ == KitchenTimerState::Running && deadlineReached(now_ms, end_ms_)) {
         state_ = KitchenTimerState::Alerting;
-        alert_started_ms_ = now_ms;
+        // Anchor the notification phase and duration to the actual timer
+        // deadline, not to the first update that happens to observe expiry.
+        alert_started_ms_ = end_ms_;
         paused_remaining_ms_ = 0;
-        return;
     }
 
     if (state_ == KitchenTimerState::Alerting &&
