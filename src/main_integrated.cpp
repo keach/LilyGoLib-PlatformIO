@@ -1,18 +1,4 @@
-#include <LilyGoLib.h>
-#include <LV_Helper.h>
-#include <Preferences.h>
-#include <WiFi.h>
-#include <esp_sleep.h>
-#include <esp_sntp.h>
-
-// Load LilyGoLib and its member declarations before temporarily renaming the
-// Arduino application entry points. This keeps the setup/loop macros scoped to
-// the clock application's free functions only.
-#define setup clockApplicationSetup
-#define loop clockApplicationLoop
-#include "main.cpp"
-#undef setup
-#undef loop
+#include "generated_clock_main.inc"
 
 #include <math.h>
 
