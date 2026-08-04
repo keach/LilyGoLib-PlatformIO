@@ -2,3 +2,4 @@
 .vscode
 build
 include/wifi_credentials.h
+src/generated_clock_main.inc
