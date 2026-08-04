@@ -1,3 +1,13 @@
+#include <LilyGoLib.h>
+#include <LV_Helper.h>
+#include <Preferences.h>
+#include <WiFi.h>
+#include <esp_sleep.h>
+#include <esp_sntp.h>
+
+// Load LilyGoLib and its member declarations before temporarily renaming the
+// Arduino application entry points. This keeps the setup/loop macros scoped to
+// the clock application's free functions only.
 #define setup clockApplicationSetup
 #define loop clockApplicationLoop
 #include "main.cpp"
@@ -11,12 +21,19 @@
 
 namespace {
 
-constexpr uint32_t kTimerAlertSampleRate = 16000;
+constexpr uint32_t kTimerAlertSampleRate = 160000;
 constexpr uint32_t kTimerAlertFrequency = 1000;
-constexpr size_t kTimerAlertSampleCount = kTimerAlertSampleRate;
+constexpr uint32_t kTimerAlertChunkDurationMs = 20;
+constexpr size_t kTimerAlertFrameCount =
+    kTimerAlertSampleRate * kTimerAlertChunkDurationMs / 1000;
+constexpr size_t kTimerAlertSampleCount = kTimerAlertFrameCount * 2;
 constexpr float kTimerAlertVolume = 0.35F;
+constexpr uint32_t kTimerVibrationRepeatMs = 100;
+constexpr uint64_t kMinimumTimerWakeupUs = 1000ULL;
 
 int16_t timer_alert_samples[kTimerAlertSampleCount];
+bool timer_alert_output_active = false;
+uint32_t last_timer_vibration_ms = 0;
 
 AppHubScreen app_hub_screen(kBackgroundColor,
                             kPrimaryColor,
@@ -31,12 +48,14 @@ KitchenTimerApp kitchen_timer_app(kBackgroundColor,
 
 void initializeTimerAlertSamples()
 {
-    for (size_t index = 0; index < kTimerAlertSampleCount; ++index) {
+    for (size_t frame = 0; frame < kTimerAlertFrameCount; ++frame) {
         const float phase =
-            2.0F * PI * kTimerAlertFrequency * index /
+            2.0F * PI * kTimerAlertFrequency * frame /
             kTimerAlertSampleRate;
-        timer_alert_samples[index] = static_cast<int16_t>(
+        const int16_t sample = static_cast<int16_t>(
             32767.0F * sinf(phase) * kTimerAlertVolume);
+        timer_alert_samples[frame * 2] = sample;
+        timer_alert_samples[frame * 2 + 1] = sample;
     }
 }
 
@@ -76,21 +95,38 @@ void wakeForKitchenTimer(void *)
 
 void setKitchenTimerAlertOutput(bool active, void *)
 {
+    timer_alert_output_active = active;
     if (!active) {
         instance.powerControl(POWER_SPEAK, false);
         return;
     }
 
     instance.powerControl(POWER_SPEAK, true);
+    last_timer_vibration_ms = millis() - kTimerVibrationRepeatMs;
+}
+
+void serviceKitchenTimerAlertOutput(uint32_t now_ms)
+{
+    if (!timer_alert_output_active) {
+        return;
+    }
+
+    // LilyGoLib configures the T-Watch S3 player for 160 kHz, 16-bit,
+    // stereo output. Feed a short interleaved stereo chunk continuously while
+    // the one-second alert phase is active instead of allocating a 640 KB
+    // one-second buffer.
     instance.player.write(
         reinterpret_cast<uint8_t *>(timer_alert_samples),
         sizeof(timer_alert_samples));
 
-    // Effect 1 is a strong click. Trigger it at the start of each one-second
-    // active notification phase; the runtime suppresses duplicate callbacks.
-    instance.drv.setWaveform(0, 1);
-    instance.drv.setWaveform(1, 0);
-    instance.drv.run();
+    // Effect 1 is a short strong click. Re-trigger it throughout the active
+    // phase so vibration is perceived for the full one-second ON interval.
+    if (now_ms - last_timer_vibration_ms >= kTimerVibrationRepeatMs) {
+        last_timer_vibration_ms = now_ms;
+        instance.drv.setWaveform(0, 1);
+        instance.drv.setWaveform(1, 0);
+        instance.drv.run();
+    }
 }
 
 uint64_t combinedTimerWakeupUs(bool &kitchen_timer_wakeup)
@@ -104,8 +140,12 @@ uint64_t combinedTimerWakeupUs(bool &kitchen_timer_wakeup)
         return automatic_sync_wakeup_us;
     }
 
+    // A deadline can become due between the final update and sleep setup.
+    // Always arm a non-zero wakeup so a 0 ms remainder cannot sleep forever.
     const uint64_t kitchen_timer_wakeup_us =
-        static_cast<uint64_t>(kitchen_timer_delay_ms) * 1000ULL;
+        kitchen_timer_delay_ms == 0
+            ? kMinimumTimerWakeupUs
+            : static_cast<uint64_t>(kitchen_timer_delay_ms) * 1000ULL;
     if (automatic_sync_wakeup_us == 0 ||
         kitchen_timer_wakeup_us <= automatic_sync_wakeup_us) {
         kitchen_timer_wakeup = true;
@@ -222,7 +262,9 @@ void loop()
     processWiFiConnection();
     processTimeSync();
     updateTimeSyncNotification();
-    kitchen_timer_app.update(millis());
+    const uint32_t now_ms = millis();
+    kitchen_timer_app.update(now_ms);
+    serviceKitchenTimerAlertOutput(now_ms);
 
     if (!deploy_mode_enabled && screen_on &&
         millis() - last_activity_ms >= currentScreenTimeout()) {
