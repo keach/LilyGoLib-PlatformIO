@@ -7,7 +7,7 @@
 
 namespace {
 
-constexpr uint32_t kTimerAlertSampleRate = 160000;
+constexpr uint32_t kTimerAlertSampleRate = 44100;
 constexpr uint32_t kTimerAlertFrequency = 1000;
 constexpr uint32_t kTimerAlertChunkDurationMs = 20;
 constexpr size_t kTimerAlertFrameCount =
@@ -63,8 +63,9 @@ bool initializeTimerAudio()
     timer_audio_ready = instance.initAmplifier();
 #endif
 
-    Serial.printf("Kitchen timer audio: %s\n",
-                  timer_audio_ready ? "ready" : "initialization failed");
+    Serial.printf("Kitchen timer audio: %s (%lu Hz)\n",
+                  timer_audio_ready ? "ready" : "initialization failed",
+                  static_cast<unsigned long>(kTimerAlertSampleRate));
     return timer_audio_ready;
 }
 
