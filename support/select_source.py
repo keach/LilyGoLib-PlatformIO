@@ -13,6 +13,12 @@ if firmware == "factory":
 elif firmware == "custom":
     source_dir = os.path.join(env.subst("$PROJECT_DIR"), "src")
     env.Replace(PROJECT_SRC_DIR=source_dir, PROJECTSRC_DIR=source_dir)
+
+    # main_integrated.cpp includes main.cpp in the same translation unit so the
+    # kitchen timer can reuse the existing clock application's internal screen,
+    # sleep, and power-management helpers without duplicating the large source
+    # file. Exclude the standalone main.cpp object to avoid duplicate symbols.
+    env.Replace(SRC_FILTER=["+<*>", "-<main.cpp>"])
 else:
     raise ValueError("custom_firmware must be either 'factory' or 'custom'")
 
