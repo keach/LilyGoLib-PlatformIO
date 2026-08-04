@@ -111,10 +111,8 @@ void KitchenTimerScreen::refresh(uint32_t now_ms)
 
 void KitchenTimerScreen::presetCallback(lv_event_t *event)
 {
-    auto *self = static_cast<KitchenTimerScreen *>(lv_event_get_current_target(event)
-                                                      ? lv_obj_get_user_data(
-                                                            lv_event_get_current_target(event))
-                                                      : nullptr);
+    auto *button = lv_event_get_current_target_obj(event);
+    auto *self = static_cast<KitchenTimerScreen *>(lv_obj_get_user_data(button));
     if (self == nullptr) {
         return;
     }
