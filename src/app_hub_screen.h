@@ -20,7 +20,7 @@ public:
                 void *back_context);
 
     lv_obj_t *screen() const;
-    void show();
+    void show(bool returning_from_child = false);
 
 private:
     struct ActionBinding {
