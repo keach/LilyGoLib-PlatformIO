@@ -52,9 +52,6 @@ void initializeTimerAlertSamples()
 bool initializeTimerAudio()
 {
 #if ESP_IDF_VERSION > ESP_IDF_VERSION_VAL(5, 0, 0)
-    // Reinitialize the I2S output explicitly instead of relying on the hidden
-    // result of LilyGoLib::begin(). This also makes an initialization failure
-    // visible on the serial monitor during device verification.
     instance.player.end();
     instance.player.setPins(I2S_BCLK, I2S_WCLK, I2S_DOUT);
     timer_audio_ready = instance.player.begin(
@@ -113,14 +110,17 @@ void setKitchenTimerAlertOutput(bool active, void *)
         return;
     }
 
-    if (!timer_audio_ready && !initializeTimerAudio()) {
-        return;
-    }
+    const uint32_t now_ms = millis();
+    last_timer_vibration_ms = now_ms - kTimerVibrationRepeatMs;
 
-    instance.powerControl(POWER_SPEAK, true);
-    timer_speaker_enabled_ms = millis();
-    timer_audio_write_failure_reported = false;
-    last_timer_vibration_ms = timer_speaker_enabled_ms - kTimerVibrationRepeatMs;
+    if (!timer_audio_ready) {
+        initializeTimerAudio();
+    }
+    if (timer_audio_ready) {
+        instance.powerControl(POWER_SPEAK, true);
+        timer_speaker_enabled_ms = now_ms;
+        timer_audio_write_failure_reported = false;
+    }
 }
 
 void serviceKitchenTimerAlertOutput(uint32_t now_ms)
@@ -129,26 +129,17 @@ void serviceKitchenTimerAlertOutput(uint32_t now_ms)
         return;
     }
 
-    // Give the speaker amplifier rail time to stabilize before sending PCM.
-    if (!timer_audio_ready ||
-        now_ms - timer_speaker_enabled_ms < kTimerSpeakerStartupDelayMs) {
-        return;
+    if (timer_audio_ready &&
+        now_ms - timer_speaker_enabled_ms >= kTimerSpeakerStartupDelayMs) {
+        const size_t bytes_written = instance.player.write(
+            reinterpret_cast<uint8_t *>(timer_alert_samples),
+            sizeof(timer_alert_samples));
+        if (bytes_written == 0 && !timer_audio_write_failure_reported) {
+            timer_audio_write_failure_reported = true;
+            Serial.println("Kitchen timer audio: PCM write failed");
+        }
     }
 
-    // LilyGoLib configures the T-Watch S3 player for 160 kHz, 16-bit,
-    // stereo output. Feed a short interleaved stereo chunk continuously while
-    // the one-second alert phase is active instead of allocating a 640 KB
-    // one-second buffer.
-    const size_t bytes_written = instance.player.write(
-        reinterpret_cast<uint8_t *>(timer_alert_samples),
-        sizeof(timer_alert_samples));
-    if (bytes_written == 0 && !timer_audio_write_failure_reported) {
-        timer_audio_write_failure_reported = true;
-        Serial.println("Kitchen timer audio: PCM write failed");
-    }
-
-    // Effect 1 is a short strong click. Re-trigger it throughout the active
-    // phase so vibration is perceived for the full one-second ON interval.
     if (now_ms - last_timer_vibration_ms >= kTimerVibrationRepeatMs) {
         last_timer_vibration_ms = now_ms;
         instance.drv.setWaveform(0, 1);
@@ -168,8 +159,6 @@ uint64_t combinedTimerWakeupUs(bool &kitchen_timer_wakeup)
         return automatic_sync_wakeup_us;
     }
 
-    // A deadline can become due between the final update and sleep setup.
-    // Always arm a non-zero wakeup so a 0 ms remainder cannot sleep forever.
     const uint64_t kitchen_timer_wakeup_us =
         kitchen_timer_delay_ms == 0
             ? kMinimumTimerWakeupUs
@@ -237,8 +226,6 @@ void enterIntegratedLightSleep()
         return;
     }
 
-    // Keep the overlay in place for a touch wake so the same physical touch
-    // cannot activate a control after resume.
     wakeScreen(woke_by_touch);
     const char *wakeup_reason = woke_by_tilt
                                     ? "tilt"
