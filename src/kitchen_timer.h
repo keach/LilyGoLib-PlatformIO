@@ -29,12 +29,12 @@ public:
 
     KitchenTimerState state() const;
     uint32_t configuredSeconds() const;
+    uint32_t remainingMilliseconds(uint32_t now_ms) const;
     uint32_t remainingSeconds(uint32_t now_ms) const;
     bool alertOutputActive(uint32_t now_ms) const;
 
 private:
     static uint32_t clampDurationMs(int64_t duration_ms);
-    uint32_t remainingMilliseconds(uint32_t now_ms) const;
 
     KitchenTimerState state_ = KitchenTimerState::Idle;
     uint32_t configured_duration_ms_ = 60U * 1000U;
