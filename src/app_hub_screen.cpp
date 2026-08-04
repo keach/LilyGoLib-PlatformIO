@@ -60,16 +60,18 @@ lv_obj_t *AppHubScreen::screen() const
     return screen_;
 }
 
-void AppHubScreen::show()
+void AppHubScreen::show(bool returning_from_child)
 {
     if (screen_ == nullptr) {
         return;
     }
-    lv_screen_load_anim(screen_,
-                        LV_SCR_LOAD_ANIM_MOVE_LEFT,
-                        180,
-                        0,
-                        false);
+    lv_screen_load_anim(
+        screen_,
+        returning_from_child ? LV_SCR_LOAD_ANIM_MOVE_RIGHT
+                             : LV_SCR_LOAD_ANIM_MOVE_LEFT,
+        180,
+        0,
+        false);
 }
 
 void AppHubScreen::actionCallback(lv_event_t *event)
