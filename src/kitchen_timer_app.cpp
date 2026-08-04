@@ -1,5 +1,7 @@
 #include "kitchen_timer_app.h"
 
+#include <Arduino.h>
+
 KitchenTimerApp::KitchenTimerApp(uint32_t background_color,
                                  uint32_t primary_color,
                                  uint32_t accent_color,
