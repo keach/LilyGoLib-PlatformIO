@@ -7,7 +7,7 @@
 
 namespace {
 
-constexpr uint32_t kTimerAlertSampleRate = 160000;
+constexpr uint32_t kTimerAlertSampleRate = 44100;
 constexpr uint32_t kTimerAlertFrequency = 1000;
 constexpr uint32_t kTimerAlertChunkDurationMs = 20;
 constexpr size_t kTimerAlertFrameCount =
@@ -15,10 +15,14 @@ constexpr size_t kTimerAlertFrameCount =
 constexpr size_t kTimerAlertSampleCount = kTimerAlertFrameCount * 2;
 constexpr float kTimerAlertVolume = 0.35F;
 constexpr uint32_t kTimerVibrationRepeatMs = 100;
+constexpr uint32_t kTimerSpeakerStartupDelayMs = 20;
 constexpr uint64_t kMinimumTimerWakeupUs = 1000ULL;
 
 int16_t timer_alert_samples[kTimerAlertSampleCount];
 bool timer_alert_output_active = false;
+bool timer_audio_ready = false;
+bool timer_audio_write_failure_reported = false;
+uint32_t timer_speaker_enabled_ms = 0;
 uint32_t last_timer_vibration_ms = 0;
 
 AppHubScreen app_hub_screen(kBackgroundColor,
@@ -43,6 +47,26 @@ void initializeTimerAlertSamples()
         timer_alert_samples[frame * 2] = sample;
         timer_alert_samples[frame * 2 + 1] = sample;
     }
+}
+
+bool initializeTimerAudio()
+{
+#if ESP_IDF_VERSION > ESP_IDF_VERSION_VAL(5, 0, 0)
+    instance.player.end();
+    instance.player.setPins(I2S_BCLK, I2S_WCLK, I2S_DOUT);
+    timer_audio_ready = instance.player.begin(
+        I2S_MODE_STD,
+        kTimerAlertSampleRate,
+        I2S_DATA_BIT_WIDTH_16BIT,
+        I2S_SLOT_MODE_STEREO);
+#else
+    timer_audio_ready = instance.initAmplifier();
+#endif
+
+    Serial.printf("Kitchen timer audio: %s (%lu Hz)\n",
+                  timer_audio_ready ? "ready" : "initialization failed",
+                  static_cast<unsigned long>(kTimerAlertSampleRate));
+    return timer_audio_ready;
 }
 
 void showClockFromApps(void *)
@@ -87,8 +111,17 @@ void setKitchenTimerAlertOutput(bool active, void *)
         return;
     }
 
-    instance.powerControl(POWER_SPEAK, true);
-    last_timer_vibration_ms = millis() - kTimerVibrationRepeatMs;
+    const uint32_t now_ms = millis();
+    last_timer_vibration_ms = now_ms - kTimerVibrationRepeatMs;
+
+    if (!timer_audio_ready) {
+        initializeTimerAudio();
+    }
+    if (timer_audio_ready) {
+        instance.powerControl(POWER_SPEAK, true);
+        timer_speaker_enabled_ms = now_ms;
+        timer_audio_write_failure_reported = false;
+    }
 }
 
 void serviceKitchenTimerAlertOutput(uint32_t now_ms)
@@ -97,16 +130,17 @@ void serviceKitchenTimerAlertOutput(uint32_t now_ms)
         return;
     }
 
-    // LilyGoLib configures the T-Watch S3 player for 160 kHz, 16-bit,
-    // stereo output. Feed a short interleaved stereo chunk continuously while
-    // the one-second alert phase is active instead of allocating a 640 KB
-    // one-second buffer.
-    instance.player.write(
-        reinterpret_cast<uint8_t *>(timer_alert_samples),
-        sizeof(timer_alert_samples));
+    if (timer_audio_ready &&
+        now_ms - timer_speaker_enabled_ms >= kTimerSpeakerStartupDelayMs) {
+        const size_t bytes_written = instance.player.write(
+            reinterpret_cast<uint8_t *>(timer_alert_samples),
+            sizeof(timer_alert_samples));
+        if (bytes_written == 0 && !timer_audio_write_failure_reported) {
+            timer_audio_write_failure_reported = true;
+            Serial.println("Kitchen timer audio: PCM write failed");
+        }
+    }
 
-    // Effect 1 is a short strong click. Re-trigger it throughout the active
-    // phase so vibration is perceived for the full one-second ON interval.
     if (now_ms - last_timer_vibration_ms >= kTimerVibrationRepeatMs) {
         last_timer_vibration_ms = now_ms;
         instance.drv.setWaveform(0, 1);
@@ -126,8 +160,6 @@ uint64_t combinedTimerWakeupUs(bool &kitchen_timer_wakeup)
         return automatic_sync_wakeup_us;
     }
 
-    // A deadline can become due between the final update and sleep setup.
-    // Always arm a non-zero wakeup so a 0 ms remainder cannot sleep forever.
     const uint64_t kitchen_timer_wakeup_us =
         kitchen_timer_delay_ms == 0
             ? kMinimumTimerWakeupUs
@@ -195,8 +227,6 @@ void enterIntegratedLightSleep()
         return;
     }
 
-    // Keep the overlay in place for a touch wake so the same physical touch
-    // cannot activate a control after resume.
     wakeScreen(woke_by_touch);
     const char *wakeup_reason = woke_by_tilt
                                     ? "tilt"
@@ -212,6 +242,7 @@ void setup()
     clockApplicationSetup();
 
     initializeTimerAlertSamples();
+    initializeTimerAudio();
     instance.powerControl(POWER_SPEAK, false);
 
     app_hub_screen.create(showKitchenTimer,
