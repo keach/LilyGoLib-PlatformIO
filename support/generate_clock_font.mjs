@@ -68,6 +68,8 @@ const header = `/***************************************************************
 function createSevenGlyphBitmap(topSegmentTemplate) {
     const width = 23;
     const height = 36;
+    const topSegmentTemplateWidth = 21;
+    const topSegmentTemplateOffsetX = 2;
     const pixels = new Uint8Array(width * height);
 
     const setPixel = (x, y, value = 0x0f) => {
@@ -76,11 +78,16 @@ function createSevenGlyphBitmap(topSegmentTemplate) {
         }
     };
 
-    // Reuse the top segment from "8" so that its bevels and antialiasing are
-    // identical to the other digits generated from DSEG7.
+    // Reuse the top of "3", which contains the top and upper-right segments
+    // without the upper-left segment. Align its narrower glyph box with the
+    // 23-pixel-wide "7" box so the bevels and antialiasing stay unchanged.
     for (let y = 0; y <= 4; y++) {
-        for (let x = 0; x < width; x++) {
-            setPixel(x, y, topSegmentTemplate[y * width + x]);
+        for (let x = 0; x < topSegmentTemplateWidth; x++) {
+            setPixel(
+                x + topSegmentTemplateOffsetX,
+                y,
+                topSegmentTemplate[y * topSegmentTemplateWidth + x]
+            );
         }
     }
 
@@ -129,12 +136,12 @@ function replaceSevenGlyphBitmap(source) {
     const bitmapValues = [...bitmapMatch[2].matchAll(/0x[0-9a-f]+/gi)].map(
         (match) => Number.parseInt(match[0], 16)
     );
-    const eightGlyphId = 10; // reserved, '-', '0' ... '8'
-    const eightStart = descriptors[eightGlyphId];
-    const eightEnd = descriptors[eightGlyphId + 1];
-    const eightBytes = bitmapValues.slice(eightStart, eightEnd);
-    const eightPixels = eightBytes.flatMap((value) => [value >> 4, value & 0x0f]);
-    const replacement = createSevenGlyphBitmap(eightPixels);
+    const threeGlyphId = 5; // reserved, '-', '0' ... '3'
+    const threeStart = descriptors[threeGlyphId];
+    const threeEnd = descriptors[threeGlyphId + 1];
+    const threeBytes = bitmapValues.slice(threeStart, threeEnd);
+    const threePixels = threeBytes.flatMap((value) => [value >> 4, value & 0x0f]);
+    const replacement = createSevenGlyphBitmap(threePixels);
     if (replacement.length !== end - start) {
         throw new Error(
             `custom '7' bitmap is ${replacement.length} bytes; expected ${end - start}`
