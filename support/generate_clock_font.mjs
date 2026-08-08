@@ -65,7 +65,7 @@ const header = `/***************************************************************
  ******************************************************************************/
 `;
 
-function createSevenGlyphBitmap() {
+function createSevenGlyphBitmap(topSegmentTemplate) {
     const width = 23;
     const height = 36;
     const pixels = new Uint8Array(width * height);
@@ -76,17 +76,17 @@ function createSevenGlyphBitmap() {
         }
     };
 
-    // Top segment with short bevelled ends.
+    // Reuse the top segment from "8" so that its bevels and antialiasing are
+    // identical to the other digits generated from DSEG7.
     for (let y = 0; y <= 4; y++) {
-        const inset = Math.max(0, 2 - y);
-        for (let x = 2 + inset; x <= 20 - inset; x++) {
-            setPixel(x, y);
+        for (let x = 0; x < width; x++) {
+            setPixel(x, y, topSegmentTemplate[y * width + x]);
         }
     }
 
     // Upper-right and lower-right segments. Keep a small center gap so the
     // glyph reads as three independent seven-segment bars.
-    for (let y = 3; y <= 16; y++) {
+    for (let y = 5; y <= 16; y++) {
         const inset = y <= 4 || y >= 15 ? 1 : 0;
         for (let x = 18 + inset; x <= 22 - inset; x++) {
             setPixel(x, y);
@@ -129,7 +129,12 @@ function replaceSevenGlyphBitmap(source) {
     const bitmapValues = [...bitmapMatch[2].matchAll(/0x[0-9a-f]+/gi)].map(
         (match) => Number.parseInt(match[0], 16)
     );
-    const replacement = createSevenGlyphBitmap();
+    const eightGlyphId = 10; // reserved, '-', '0' ... '8'
+    const eightStart = descriptors[eightGlyphId];
+    const eightEnd = descriptors[eightGlyphId + 1];
+    const eightBytes = bitmapValues.slice(eightStart, eightEnd);
+    const eightPixels = eightBytes.flatMap((value) => [value >> 4, value & 0x0f]);
+    const replacement = createSevenGlyphBitmap(eightPixels);
     if (replacement.length !== end - start) {
         throw new Error(
             `custom '7' bitmap is ${replacement.length} bytes; expected ${end - start}`
