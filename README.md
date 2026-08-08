@@ -34,6 +34,7 @@ UTC+9).
 | Brightness setting | Implemented and device-tested | Separate live-preview screen with `SAVE`/`CANCEL` and NVS persistence |
 | Settings hub | Implemented and build-tested | The clock-screen `SET` button opens `DATE & TIME`, `POWER & DISPLAY`, `BRIGHTNESS`, and a grouped `WI-FI & NTP` submenu |
 | Restore defaults | Implemented and device-tested | Confirmation screen restores brightness, display timeouts, clock format, and automatic time sync defaults immediately and in NVS |
+| Kitchen timer | Implemented and device-tested | Clock-screen `APPS` entry, timer screen, background countdown, Light Sleep timer wake, audible alert, vibration, and alert stop flow |
 | Documentation | Implemented | Project-specific English and Japanese README |
 
 ### Roadmap
@@ -51,6 +52,7 @@ UTC+9).
 #### Current milestone: clock and interaction foundation
 
 - [x] Power on/off with a long press of the crown
+- [x] Kitchen timer with background countdown, Light Sleep wake, sound, and vibration ([#32](https://github.com/keach/t-watch-s3-custom/issues/32))
 - [ ] Japanese font and text-rendering foundation
 
 #### Following milestone: network information
@@ -64,14 +66,16 @@ These are possible extensions and are not yet committed requirements.
 
 - Japanese UI or selectable display language
 - Selectable timezone instead of fixed JST
-- Alarm, timer, and stopwatch functions
+- Scheduled alarm: planned ([#49](https://github.com/keach/t-watch-s3-custom/issues/49))
+- Pomodoro timer: planned ([#19](https://github.com/keach/t-watch-s3-custom/issues/19))
+- Stopwatch: future candidate
 
 ### PlatformIO environments
 
 | Environment | Purpose | Source |
 | --- | --- | --- |
 | `twatchs3` | Upstream factory firmware | LilyGoLib factory example |
-| `twatchs3_custom` | This custom clock firmware | `src/main.cpp` |
+| `twatchs3_custom` | This custom clock firmware | `src/main_integrated.cpp` (includes the generated clock foundation from `main.cpp`) |
 
 The factory and custom environments remain independent and can be built in
 parallel.
@@ -90,7 +94,7 @@ The project pins the pioarduino ESP32 platform that provides Arduino-ESP32
 
 The clock uses T-Watch Custom Digits, a Modified Version derived from
 [DSEG7 Classic Bold](https://github.com/keshikan/DSEG). It maps the source
-font's `b` and `q` glyphs to `6` and `9`. The Modified Version does not use
+font's `b` and `q` glyphs to `6` and `9`, and redraws `7` with only the top, upper-right, and lower-right segments (A/B/C). The Modified Version does not use
 the Reserved Font Name "DSEG" as its primary name. The source font is
 Copyright (c) 2020 keshikan and is distributed under the SIL Open Font
 License 1.1. The required license text is included in
@@ -103,7 +107,7 @@ embedded 36 px subset with:
 node support/generate_clock_font.mjs /path/to/DSEG7Classic-Bold.ttf
 ```
 
-Only `-` and `0` through `9` are embedded in the firmware.
+Only `-` and `0` through `9` are embedded in the firmware. During regeneration, the script also replaces `7` with the project-specific A/B/C-segment bitmap.
 
 ### Wi-Fi configuration
 
@@ -184,6 +188,10 @@ flowchart TD
     ACTIVE --> CLOCK
     CLOCK -- "SET" --> HUB["Open settings hub"]
     HUB -- "BACK" --> CLOCK
+    CLOCK -- "APPS" --> APPS["Open apps hub"]
+    APPS -- "KITCHEN TIMER" --> TIMER["Start or manage countdown"]
+    TIMER -- "BACK" --> APPS
+    APPS -- "BACK" --> CLOCK
 
     CLOCK -- "Configured timeout reached and DEPLOY MODE is off" --> OFF["Turn display off"]
     OFF --> READY{"Configured sleep delay elapsed and radio idle?"}
@@ -194,9 +202,12 @@ flowchart TD
     RESTORE --> CLOCK
     WAKE -- "Automatic sync timer" --> BG["Run due synchronization with display off"]
     BG --> OFF
+    WAKE -- "Kitchen timer" --> ALERT["Wake display and start sound and vibration"]
+    ALERT -- "STOP" --> CLOCK
 ```
 
 - Use `SET` on the clock screen to open the settings hub.
+- Use `APPS` to open the apps hub and enter the kitchen timer without going through settings. The countdown continues in the background; expiry wakes the watch from Light Sleep and starts sound and vibration until stopped.
 - Select `DATE & TIME`, `POWER & DISPLAY`, `BRIGHTNESS`, or `WI-FI & NTP` in
   the hub. The `WI-FI & NTP` submenu opens the existing `WI-FI` and
   `TIME SYNC` screens. `SAVE`, `CANCEL`, and `BACK` return through the
@@ -384,6 +395,7 @@ flowchart TD
 | 明るさ設定 | 実装・実機確認済み | 即時プレビュー、`SAVE`/`CANCEL`、NVS永続化を備えた独立画面 |
 | 設定ハブ | 実装・ビルド確認済み | 時計画面の`SET`から`DATE & TIME`、`POWER & DISPLAY`、`BRIGHTNESS`、および`WI-FI & NTP`サブメニューを開く構成 |
 | 設定初期化 | 実装・実機確認済み | 確認画面を経て、明るさ・画面時間・時計形式・NTP自動同期を即時およびNVS上で初期値へ戻す |
+| キッチンタイマー | 実装・実機確認済み | 時計画面の`APPS`導線、タイマー画面、バックグラウンドカウントダウン、Light Sleep中の期限到達・復帰、音・バイブレーション通知、停止操作 |
 | ドキュメント | 実装済み | このプロジェクト専用の英語・日本語README |
 
 ### ロードマップ
@@ -402,6 +414,7 @@ flowchart TD
 #### 現在のマイルストーン：時計・操作基盤の仕上げ
 
 - [x] 竜頭長押しによる電源オン・オフ
+- [x] バックグラウンド動作、Light Sleep復帰、音・バイブレーション通知を備えたキッチンタイマー（[#32](https://github.com/keach/t-watch-s3-custom/issues/32)）
 - [ ] 日本語フォント・表示基盤
 
 #### 次のマイルストーン：ネットワーク情報
@@ -415,14 +428,16 @@ flowchart TD
 
 - 日本語UIまたは表示言語の選択
 - JST固定ではなくタイムゾーンを選択する設定
-- アラーム、タイマー、ストップウォッチ
+- 指定時刻アラーム：計画済み（[#49](https://github.com/keach/t-watch-s3-custom/issues/49)）
+- ポモドーロタイマー：計画済み（[#19](https://github.com/keach/t-watch-s3-custom/issues/19)）
+- ストップウォッチ：将来候補
 
 ### PlatformIO環境
 
 | 環境 | 用途 | ソース |
 | --- | --- | --- |
 | `twatchs3` | 上流の工場出荷ファームウェア | LilyGoLibのfactory example |
-| `twatchs3_custom` | このプロジェクトの時計ファームウェア | `src/main.cpp` |
+| `twatchs3_custom` | このプロジェクトの時計ファームウェア | `src/main_integrated.cpp`（`main.cpp`由来の生成済み時計基盤を取り込む） |
 
 工場出荷版とカスタム版は独立しており、平行してビルドできます。
 
@@ -440,7 +455,7 @@ pioarduinoのESP32プラットフォームを固定しています。
 
 時計には、[DSEG7 Classic Bold](https://github.com/keshikan/DSEG)を元にした
 Modified Version「T-Watch Custom Digits」を使用します。元フォントの`b`と`q`を
-`6`と`9`へ割り当てており、Modified Versionの主要名称にはReserved Font Name
+`6`と`9`へ割り当て、`7`は上・右上・右下（A・B・C）の3セグメントだけで描画しています。Modified Versionの主要名称にはReserved Font Name
 「DSEG」を使用しません。元フォントはCopyright (c) 2020 keshikanで、SIL Open
 Font License 1.1の下で配布されています。必要なライセンス全文は
 `src/fonts/DSEG-LICENSE.txt`に収録しています。
@@ -452,7 +467,7 @@ Font License 1.1の下で配布されています。必要なライセンス全�
 node support/generate_clock_font.mjs /path/to/DSEG7Classic-Bold.ttf
 ```
 
-ファームウェアには`-`と`0`〜`9`だけを組み込んでいます。
+ファームウェアには`-`と`0`〜`9`だけを組み込んでいます。再生成時には、スクリプトが`7`をプロジェクト独自のA・B・Cセグメントのビットマップへ置換します。
 
 ### Wi-Fi設定
 
@@ -534,6 +549,10 @@ flowchart TD
     ACTIVE --> CLOCK
     CLOCK -- "SET" --> HUB["設定ハブを開く"]
     HUB -- "BACK" --> CLOCK
+    CLOCK -- "APPS" --> APPS["アプリハブを開く"]
+    APPS -- "KITCHEN TIMER" --> TIMER["カウントダウンを開始・管理"]
+    TIMER -- "BACK" --> APPS
+    APPS -- "BACK" --> CLOCK
 
     CLOCK -- "設定時間に到達、かつDEPLOY MODEが無効" --> OFF["画面を消灯"]
     OFF --> READY{"設定済み待機時間が経過し、通信処理も停止?"}
@@ -544,9 +563,12 @@ flowchart TD
     RESTORE --> CLOCK
     WAKE -- "自動同期タイマー" --> BG["画面を点灯せず期限到来済み同期を実行"]
     BG --> OFF
+    WAKE -- "キッチンタイマー" --> ALERT["画面を復帰し音・バイブレーションを開始"]
+    ALERT -- "STOP" --> CLOCK
 ```
 
 - 時計画面の`SET`から設定ハブを開きます。
+- `APPS`から設定ハブを経由せずアプリハブを開き、キッチンタイマーへ移動できます。カウントダウンはバックグラウンドでも継続し、期限到達時はLight Sleepから復帰して、停止するまで音とバイブレーションで通知します。
 - ハブで`DATE & TIME`、`POWER & DISPLAY`、`BRIGHTNESS`、`WI-FI & NTP`の
   いずれかを選択します。`WI-FI & NTP`サブメニューから、既存の`WI-FI`画面と
   `TIME SYNC`画面へ移動します。`SAVE`、`CANCEL`、`BACK`は対応する親画面へ戻り、
