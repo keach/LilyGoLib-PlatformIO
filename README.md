@@ -21,7 +21,7 @@ UTC+9).
 | Area | Implemented | Device verified | Details |
 | --- | :---: | :---: | --- |
 | Build foundation | YES | - | Pinned Arduino-ESP32 3.3.8 toolchain and separate factory/custom PlatformIO environments |
-| Firmware identification | YES | PARTLY | Build-time nearest Git tag, 7-character commit ID, dirty state, and JST commit date shown at startup, in serial output, and on the `ABOUT` screen; startup and `ABOUT` display are device-tested, while serial output remains to be verified |
+| Firmware identification | YES | YES | Build-time nearest Git tag, 7-character commit ID, dirty state, and JST commit date shown at startup, in serial output, and on the `ABOUT` screen; tagged clean and untagged dirty builds are device-tested |
 | Clock face | YES | YES | Fixed-position time fields, compact `yyyy.mm.dd. ddd` date, and reboot-persistent 12-hour/24-hour selection with AM/PM |
 | Custom seven-segment clock font | YES | YES | 36 px T-Watch Custom Digits derived from DSEG7 Classic Bold, with `b`/`q` forms mapped to `6`/`9`, no clipping, and independent field centering verified |
 | RTC | YES | YES | RTC refresh whenever the clock face appears and a separate manual date/time screen |
@@ -48,7 +48,7 @@ completed, `-` = not applicable.
 - [ ] Verify display-off and Light Sleep at every configured timeout preset
 - [x] Verify firmware version and commit date on the startup and `ABOUT` screens,
   including the return path to the settings hub
-- [ ] Verify firmware version and commit date in serial output
+- [x] Verify firmware version and commit date in serial output
 - [x] Verify the startup screen, transition to the clock, 4-second power-off,
   graceful-shutdown screen, 2-second power-on, and unchanged short-press wake behavior
 - [x] Verify T-Watch Custom Digits legibility, `b`/`q` forms, clipping, and per-field centering in
@@ -392,7 +392,7 @@ flowchart TD
 | 領域 | 実装 | 実機確認 | 内容 |
 | --- | :---: | :---: | --- |
 | ビルド基盤 | ○ | ー | Arduino-ESP32 3.3.8の固定と、factory/customを分離したPlatformIO環境 |
-| ファームウェア識別情報 | ○ | △ | ビルド時に直近のGitタグ、7文字のコミットID、未コミット状態、JSTのコミット日時を生成し、起動画面・シリアル出力・`ABOUT`画面へ表示。起動画面と`ABOUT`画面は実機確認済みで、シリアル出力は確認待ち |
+| ファームウェア識別情報 | ○ | ○ | ビルド時に直近のGitタグ、7文字のコミットID、未コミット状態、JSTのコミット日時を生成し、起動画面・シリアル出力・`ABOUT`画面へ表示。タグ付きclean版とタグなしdirty版を実機確認済み |
 | 時計画面 | ○ | ○ | 位置を固定した時刻欄、コンパクトな`yyyy.mm.dd. ddd`日付、再起動後も保持されるAM/PM付き12時間・24時間表示の選択 |
 | 独自7セグ風時計フォント | ○ | ○ | DSEG7 Classic Boldを元にした36pxのT-Watch Custom Digitsを使用し、`6`/`9`へ`b`/`q`形を割り当て、文字切れがないことと項目ごとの中央揃えを確認済み |
 | RTC | ○ | ○ | 時計画面表示時のRTC再読込と、独立した日付・時刻手動設定画面 |
@@ -418,7 +418,7 @@ flowchart TD
 - [ ] すべての設定プリセットどおりに画面消灯・Light Sleepへ移行することを確認
 - [x] 起動画面と`ABOUT`画面にファームウェアのバージョンとコミット日時が
   表示され、設定ハブへ正常に戻れることを確認
-- [ ] シリアル出力にファームウェアのバージョンとコミット日時が表示されることを確認
+- [x] シリアル出力にファームウェアのバージョンとコミット日時が表示されることを確認
 - [x] 起動画面と時計画面への遷移、4秒長押しによる電源オフ、
   graceful shutdown画面、2秒長押しによる電源オン、および短押しの
   画面復帰が従来どおりであることを確認
