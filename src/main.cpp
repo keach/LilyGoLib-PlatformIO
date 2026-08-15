@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <time.h>
 
+#include "firmware_version.h"
 #include "wifi_credentials_types.h"
 
 LV_FONT_DECLARE(lv_font_watch_digits_36);
@@ -99,6 +100,7 @@ const char *const kFieldNames[] = {
 
 lv_obj_t *clock_screen;
 lv_obj_t *settings_hub_screen;
+lv_obj_t *about_screen;
 lv_obj_t *power_display_screen;
 lv_obj_t *timeout_settings_screen;
 lv_obj_t *reset_settings_screen;
@@ -1356,6 +1358,12 @@ void showSettingsHubScreen(lv_event_t *)
                         180, 0, false);
 }
 
+void showAboutScreen(lv_event_t *)
+{
+    lv_screen_load_anim(about_screen, LV_SCR_LOAD_ANIM_MOVE_LEFT,
+                        180, 0, false);
+}
+
 void showPowerDisplayScreen(lv_event_t *)
 {
     lv_screen_load_anim(power_display_screen, LV_SCR_LOAD_ANIM_MOVE_LEFT,
@@ -1917,15 +1925,70 @@ void createSettingsHubScreen()
     lv_obj_align(subtitle, LV_ALIGN_TOP_MID, 0, 30);
 
     createButton(settings_hub_screen, "DATE & TIME",
-                 20, 44, 200, 34, showDateTimeScreen);
+                 20, 44, 200, 28, showDateTimeScreen);
     createButton(settings_hub_screen, "POWER & DISPLAY",
-                 20, 82, 200, 34, showPowerDisplayScreen);
+                 20, 76, 200, 28, showPowerDisplayScreen);
     createButton(settings_hub_screen, "BRIGHTNESS",
-                 20, 120, 200, 34, showBrightnessScreen);
+                 20, 108, 200, 28, showBrightnessScreen);
     createButton(settings_hub_screen, "WI-FI & NTP",
-                 20, 158, 200, 34, showWiFiNtpScreen);
+                 20, 140, 200, 28, showWiFiNtpScreen);
+    createButton(settings_hub_screen, "ABOUT",
+                 20, 172, 200, 28, showAboutScreen);
     createButton(settings_hub_screen, "BACK",
-                 20, 202, 200, 28, showClockScreen);
+                 20, 206, 200, 28, showClockScreen);
+}
+
+void createAboutScreen()
+{
+    about_screen = lv_obj_create(nullptr);
+    styleScreen(about_screen);
+    lv_obj_add_event_cb(about_screen, markUserActivity,
+                        LV_EVENT_PRESSED, nullptr);
+
+    lv_obj_t *title = lv_label_create(about_screen);
+    lv_label_set_text(title, "ABOUT");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(kAccentColor), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
+
+    lv_obj_t *product = lv_label_create(about_screen);
+    lv_label_set_text(product, "T-WATCH S3 CUSTOM");
+    lv_obj_set_width(product, 204);
+    lv_obj_set_style_text_align(product, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(product, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(product, lv_color_hex(kPrimaryColor), 0);
+    lv_obj_set_pos(product, 18, 36);
+
+    lv_obj_t *version_heading = lv_label_create(about_screen);
+    lv_label_set_text(version_heading, "VERSION");
+    lv_obj_set_style_text_font(version_heading, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(version_heading, lv_color_hex(kMutedColor), 0);
+    lv_obj_set_pos(version_heading, 18, 66);
+
+    lv_obj_t *version = lv_label_create(about_screen);
+    lv_label_set_text(version, FirmwareVersion::kVersion);
+    lv_obj_set_width(version, 204);
+    lv_label_set_long_mode(version, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_font(version, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(version, lv_color_hex(kPrimaryColor), 0);
+    lv_obj_set_pos(version, 18, 82);
+
+    lv_obj_t *commit_heading = lv_label_create(about_screen);
+    lv_label_set_text(commit_heading, "COMMIT DATE");
+    lv_obj_set_style_text_font(commit_heading, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(commit_heading, lv_color_hex(kMutedColor), 0);
+    lv_obj_set_pos(commit_heading, 18, 116);
+
+    lv_obj_t *commit_date = lv_label_create(about_screen);
+    lv_label_set_text(commit_date, FirmwareVersion::kCommitDate);
+    lv_obj_set_width(commit_date, 204);
+    lv_label_set_long_mode(commit_date, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_font(commit_date, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(commit_date, lv_color_hex(kPrimaryColor), 0);
+    lv_obj_set_pos(commit_date, 18, 132);
+
+    createButton(about_screen, "BACK", 20, 202, 200, 30,
+                 returnToSettingsHubScreen);
 }
 
 void createPowerDisplayScreen()
@@ -2399,6 +2462,14 @@ void createStartupScreen()
     lv_obj_set_style_text_font(status, &lv_font_montserrat_10, 0);
     lv_obj_set_style_text_color(status, lv_color_hex(kAccentColor), 0);
     lv_obj_set_pos(status, 18, 52);
+
+    lv_obj_t *version = lv_label_create(startup_screen);
+    lv_label_set_text(version, FirmwareVersion::kVersion);
+    lv_obj_set_width(version, 204);
+    lv_label_set_long_mode(version, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_font(version, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(version, lv_color_hex(kMutedColor), 0);
+    lv_obj_set_pos(version, 18, 76);
 }
 
 }  // namespace
@@ -2406,6 +2477,8 @@ void createStartupScreen()
 void setup()
 {
     Serial.begin(115200);
+    Serial.printf("Firmware version: %s\n", FirmwareVersion::kVersion);
+    Serial.printf("Commit date: %s\n", FirmwareVersion::kCommitDate);
     setenv("TZ", kTimeZone, 1);
     tzset();
     instance.begin();
@@ -2427,6 +2500,7 @@ void setup()
     const uint32_t startup_screen_started_ms = millis();
 
     createSettingsHubScreen();
+    createAboutScreen();
     createPowerDisplayScreen();
     createTimeoutSettingsScreen();
     createResetSettingsScreen();

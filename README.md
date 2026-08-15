@@ -21,6 +21,7 @@ UTC+9).
 | Area | Implemented | Device verified | Details |
 | --- | :---: | :---: | --- |
 | Build foundation | YES | - | Pinned Arduino-ESP32 3.3.8 toolchain and separate factory/custom PlatformIO environments |
+| Firmware identification | YES | PARTLY | Build-time nearest Git tag, 7-character commit ID, dirty state, and JST commit date shown at startup, in serial output, and on the `ABOUT` screen; startup and `ABOUT` display are device-tested, while serial output remains to be verified |
 | Clock face | YES | YES | Fixed-position time fields, compact `yyyy.mm.dd. ddd` date, and reboot-persistent 12-hour/24-hour selection with AM/PM |
 | Custom seven-segment clock font | YES | YES | 36 px T-Watch Custom Digits derived from DSEG7 Classic Bold, with `b`/`q` forms mapped to `6`/`9`, no clipping, and independent field centering verified |
 | RTC | YES | YES | RTC refresh whenever the clock face appears and a separate manual date/time screen |
@@ -32,7 +33,7 @@ UTC+9).
 | Battery status | YES | YES | Compact always-visible upper-left battery, charging, USB-power, and low-battery state |
 | Wi-Fi and NTP | YES | YES | Wi-Fi status, reconnect/disconnect controls, multiple fixed networks, persistent automatic synchronization, manual `SYNC NOW`, RTC update, and ownership-aware radio shutdown |
 | Brightness setting | YES | YES | Separate live-preview screen with `SAVE`/`CANCEL` and NVS persistence |
-| Settings hub | YES |  | The clock-screen `SET` button opens `DATE & TIME`, `POWER & DISPLAY`, `BRIGHTNESS`, and a grouped `WI-FI & NTP` submenu |
+| Settings hub | YES |  | The clock-screen `SET` button opens `DATE & TIME`, `POWER & DISPLAY`, `BRIGHTNESS`, grouped `WI-FI & NTP`, and `ABOUT` screens |
 | Restore defaults | YES | YES | Confirmation screen restores brightness, display timeouts, clock format, and automatic time sync defaults immediately and in NVS |
 | Kitchen timer | YES | YES | Clock-screen `APPS` entry, timer screen, background countdown, Light Sleep timer wake, audible alert, vibration, and alert stop flow |
 | Documentation | YES | - | Project-specific English and Japanese README |
@@ -45,6 +46,9 @@ completed, `-` = not applicable.
 #### Current verification
 
 - [ ] Verify display-off and Light Sleep at every configured timeout preset
+- [x] Verify firmware version and commit date on the startup and `ABOUT` screens,
+  including the return path to the settings hub
+- [ ] Verify firmware version and commit date in serial output
 - [x] Verify the startup screen, transition to the clock, 4-second power-off,
   graceful-shutdown screen, 2-second power-on, and unchanged short-press wake behavior
 - [x] Verify T-Watch Custom Digits legibility, `b`/`q` forms, clipping, and per-field centering in
@@ -209,7 +213,7 @@ flowchart TD
 
 - Use `SET` on the clock screen to open the settings hub.
 - Use `APPS` to open the apps hub and enter the kitchen timer without going through settings. The countdown continues in the background; expiry wakes the watch from Light Sleep and starts sound and vibration until stopped.
-- Select `DATE & TIME`, `POWER & DISPLAY`, `BRIGHTNESS`, or `WI-FI & NTP` in
+- Select `DATE & TIME`, `POWER & DISPLAY`, `BRIGHTNESS`, `WI-FI & NTP`, or `ABOUT` in
   the hub. The `WI-FI & NTP` submenu opens the existing `WI-FI` and
   `TIME SYNC` screens. `SAVE`, `CANCEL`, and `BACK` return through the
   corresponding parent screen; the hub's `BACK` returns to the clock.
@@ -235,6 +239,8 @@ flowchart TD
 - The wake touch is consumed so it does not accidentally activate a control.
 - RTC time and battery state are refreshed after wake.
 - A compact battery or power status remains visible at the upper left.
+- `ABOUT` shows the build's nearest Git tag and 7-character commit ID, appends
+  `-dirty` for uncommitted changes, and shows the HEAD commit date in JST.
 
 ### Settings flow
 
@@ -286,6 +292,9 @@ flowchart TD
     TS1 --> TS0
     TS0 -- "BACK" --> WN0
     WN0 -- "BACK" --> HUB
+
+    HUB -- "ABOUT" --> AB["Show firmware version and JST commit date"]
+    AB -- "BACK" --> HUB
 
     HUB -- "BACK" --> CLOCK
     HUB -. "Configured settings timeout reached and DEPLOY MODE is off" .-> OFF["Turn display off"]
@@ -383,6 +392,7 @@ flowchart TD
 | 領域 | 実装 | 実機確認 | 内容 |
 | --- | :---: | :---: | --- |
 | ビルド基盤 | ○ | ー | Arduino-ESP32 3.3.8の固定と、factory/customを分離したPlatformIO環境 |
+| ファームウェア識別情報 | ○ | △ | ビルド時に直近のGitタグ、7文字のコミットID、未コミット状態、JSTのコミット日時を生成し、起動画面・シリアル出力・`ABOUT`画面へ表示。起動画面と`ABOUT`画面は実機確認済みで、シリアル出力は確認待ち |
 | 時計画面 | ○ | ○ | 位置を固定した時刻欄、コンパクトな`yyyy.mm.dd. ddd`日付、再起動後も保持されるAM/PM付き12時間・24時間表示の選択 |
 | 独自7セグ風時計フォント | ○ | ○ | DSEG7 Classic Boldを元にした36pxのT-Watch Custom Digitsを使用し、`6`/`9`へ`b`/`q`形を割り当て、文字切れがないことと項目ごとの中央揃えを確認済み |
 | RTC | ○ | ○ | 時計画面表示時のRTC再読込と、独立した日付・時刻手動設定画面 |
@@ -394,7 +404,7 @@ flowchart TD
 | バッテリー状態 | ○ | ○ | 左上に常時表示する簡潔な残量、充電、USB給電、低残量表示 |
 | Wi-Fi・NTP | ○ | ○ | Wi-Fi状態、再接続・切断操作、複数固定ネットワーク、自動同期の永続化、手動`SYNC NOW`、RTC更新、接続元に応じたWi-Fi停止 |
 | 明るさ設定 | ○ | ○ | 即時プレビュー、`SAVE`/`CANCEL`、NVS永続化を備えた独立画面 |
-| 設定ハブ | ○ |  | 時計画面の`SET`から`DATE & TIME`、`POWER & DISPLAY`、`BRIGHTNESS`、および`WI-FI & NTP`サブメニューを開く構成 |
+| 設定ハブ | ○ |  | 時計画面の`SET`から`DATE & TIME`、`POWER & DISPLAY`、`BRIGHTNESS`、`WI-FI & NTP`サブメニュー、および`ABOUT`画面を開く構成 |
 | 設定初期化 | ○ | ○ | 確認画面を経て、明るさ・画面時間・時計形式・NTP自動同期を即時およびNVS上で初期値へ戻す |
 | キッチンタイマー | ○ | ○ | 時計画面の`APPS`導線、タイマー画面、バックグラウンドカウントダウン、Light Sleep中の期限到達・復帰、音・バイブレーション通知、停止操作 |
 | ドキュメント | ○ | ー | このプロジェクト専用の英語・日本語README |
@@ -406,6 +416,9 @@ flowchart TD
 #### 現在の実機確認
 
 - [ ] すべての設定プリセットどおりに画面消灯・Light Sleepへ移行することを確認
+- [x] 起動画面と`ABOUT`画面にファームウェアのバージョンとコミット日時が
+  表示され、設定ハブへ正常に戻れることを確認
+- [ ] シリアル出力にファームウェアのバージョンとコミット日時が表示されることを確認
 - [x] 起動画面と時計画面への遷移、4秒長押しによる電源オフ、
   graceful shutdown画面、2秒長押しによる電源オン、および短押しの
   画面復帰が従来どおりであることを確認
@@ -570,7 +583,7 @@ flowchart TD
 
 - 時計画面の`SET`から設定ハブを開きます。
 - `APPS`から設定ハブを経由せずアプリハブを開き、キッチンタイマーへ移動できます。カウントダウンはバックグラウンドでも継続し、期限到達時はLight Sleepから復帰して、停止するまで音とバイブレーションで通知します。
-- ハブで`DATE & TIME`、`POWER & DISPLAY`、`BRIGHTNESS`、`WI-FI & NTP`の
+- ハブで`DATE & TIME`、`POWER & DISPLAY`、`BRIGHTNESS`、`WI-FI & NTP`、`ABOUT`の
   いずれかを選択します。`WI-FI & NTP`サブメニューから、既存の`WI-FI`画面と
   `TIME SYNC`画面へ移動します。`SAVE`、`CANCEL`、`BACK`は対応する親画面へ戻り、
   ハブの`BACK`は時計画面へ戻ります。
@@ -591,6 +604,8 @@ flowchart TD
 - 復帰に使ったタッチは吸収され、背後のボタンを誤操作しません。
 - 復帰時にRTC時刻とバッテリー状態を更新します。
 - 左上には簡潔なバッテリー・給電状態を常時表示します。
+- `ABOUT`には、ビルド対象から見た直近のGitタグと7文字のコミットID、
+  未コミット変更がある場合の`-dirty`、HEADコミット日時（JST）を表示します。
 
 ### 設定画面フロー
 
@@ -642,6 +657,9 @@ flowchart TD
     TS1 --> TS0
     TS0 -- "BACK" --> WN0
     WN0 -- "BACK" --> HUB
+
+    HUB -- "ABOUT" --> AB["ファームウェア版とJSTのコミット日時を表示"]
+    AB -- "BACK" --> HUB
 
     HUB -- "BACK" --> CLOCK
     HUB -. "設定画面の設定時間に到達、かつDEPLOY MODEが無効" .-> OFF["画面を消灯"]
