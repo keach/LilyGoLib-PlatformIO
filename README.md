@@ -18,24 +18,27 @@ UTC+9).
 
 ### Implementation status
 
-| Area | Status | Details |
-| --- | --- | --- |
-| Build foundation | Implemented and build-tested | Pinned Arduino-ESP32 3.3.8 toolchain and separate factory/custom PlatformIO environments |
-| Clock face | Implemented and device-tested | Fixed-position time fields, compact `yyyy.mm.dd. ddd` date, and reboot-persistent 12-hour/24-hour selection with AM/PM |
-| Custom seven-segment clock font | Implemented and device-tested | 36 px T-Watch Custom Digits derived from DSEG7 Classic Bold, with `b`/`q` forms mapped to `6`/`9`, no clipping, and independent field centering verified |
-| RTC | Implemented and device-tested | RTC refresh whenever the clock face appears and a separate manual date/time screen |
-| Display timeout | Implemented and partially device-tested | Preset selection, saving, and reboot persistence are device-tested; configured timing remains to be verified |
-| Light Sleep | Implemented and partially device-tested | Preset selection and reboot persistence are device-tested; configured timing remains to be verified |
-| Deploy mode | Implemented and device-tested | Display-off suppression, firmware upload while enabled, reboot reset, and return to normal display-off and Light Sleep are verified |
-| Power on/off | Implemented and device-tested | A non-clipped, left-aligned three-second startup screen precedes the clock; a 4-second crown hold shows a three-second graceful-shutdown screen and powers off through the AXP2101; a 2-second hold powers the watch on; short-press wake remains unchanged |
-| Wrist wake | Implemented and build-tested; device verification pending | BMA423 tilt detection wakes the display during both the screen-off delay and Light Sleep while preserving touch, crown, and timer wake sources |
-| Battery status | Implemented and device-tested | Compact always-visible upper-left battery, charging, USB-power, and low-battery state |
-| Wi-Fi and NTP | Implemented and device-tested | Wi-Fi status, reconnect/disconnect controls, multiple fixed networks, persistent automatic synchronization, manual `SYNC NOW`, RTC update, and ownership-aware radio shutdown |
-| Brightness setting | Implemented and device-tested | Separate live-preview screen with `SAVE`/`CANCEL` and NVS persistence |
-| Settings hub | Implemented and build-tested | The clock-screen `SET` button opens `DATE & TIME`, `POWER & DISPLAY`, `BRIGHTNESS`, and a grouped `WI-FI & NTP` submenu |
-| Restore defaults | Implemented and device-tested | Confirmation screen restores brightness, display timeouts, clock format, and automatic time sync defaults immediately and in NVS |
-| Kitchen timer | Implemented and device-tested | Clock-screen `APPS` entry, timer screen, background countdown, Light Sleep timer wake, audible alert, vibration, and alert stop flow |
-| Documentation | Implemented | Project-specific English and Japanese README |
+| Area | Implemented | Device verified | Details |
+| --- | :---: | :---: | --- |
+| Build foundation | YES | - | Pinned Arduino-ESP32 3.3.8 toolchain and separate factory/custom PlatformIO environments |
+| Clock face | YES | YES | Fixed-position time fields, compact `yyyy.mm.dd. ddd` date, and reboot-persistent 12-hour/24-hour selection with AM/PM |
+| Custom seven-segment clock font | YES | YES | 36 px T-Watch Custom Digits derived from DSEG7 Classic Bold, with `b`/`q` forms mapped to `6`/`9`, no clipping, and independent field centering verified |
+| RTC | YES | YES | RTC refresh whenever the clock face appears and a separate manual date/time screen |
+| Display timeout | YES | PARTLY | Preset selection, saving, and reboot persistence are device-tested; configured timing remains to be verified |
+| Light Sleep | YES | PARTLY | Preset selection and reboot persistence are device-tested; configured timing remains to be verified |
+| Deploy mode | YES | YES | Display-off suppression, firmware upload while enabled, reboot reset, and return to normal display-off and Light Sleep are verified |
+| Power on/off | YES | YES | A non-clipped, left-aligned three-second startup screen precedes the clock; a 4-second crown hold shows a three-second graceful-shutdown screen and powers off through the AXP2101; a 2-second hold powers the watch on; short-press wake remains unchanged |
+| Wrist wake | YES | YES | BMA423 tilt detection wakes the display during both the screen-off delay and Light Sleep while preserving touch, crown, and timer wake sources |
+| Battery status | YES | YES | Compact always-visible upper-left battery, charging, USB-power, and low-battery state |
+| Wi-Fi and NTP | YES | YES | Wi-Fi status, reconnect/disconnect controls, multiple fixed networks, persistent automatic synchronization, manual `SYNC NOW`, RTC update, and ownership-aware radio shutdown |
+| Brightness setting | YES | YES | Separate live-preview screen with `SAVE`/`CANCEL` and NVS persistence |
+| Settings hub | YES |  | The clock-screen `SET` button opens `DATE & TIME`, `POWER & DISPLAY`, `BRIGHTNESS`, and a grouped `WI-FI & NTP` submenu |
+| Restore defaults | YES | YES | Confirmation screen restores brightness, display timeouts, clock format, and automatic time sync defaults immediately and in NVS |
+| Kitchen timer | YES | YES | Clock-screen `APPS` entry, timer screen, background countdown, Light Sleep timer wake, audible alert, vibration, and alert stop flow |
+| Documentation | YES | - | Project-specific English and Japanese README |
+
+Status legend: `YES` = complete, `PARTLY` = partially complete, blank = not yet
+completed, `-` = not applicable.
 
 ### Roadmap
 
@@ -46,8 +49,6 @@ UTC+9).
   graceful-shutdown screen, 2-second power-on, and unchanged short-press wake behavior
 - [x] Verify T-Watch Custom Digits legibility, `b`/`q` forms, clipping, and per-field centering in
   both 12-hour and 24-hour modes
-- [ ] Verify wrist wake during the screen-off delay and Light Sleep, including
-  false-wake behavior and unchanged touch, crown, and timer wake behavior
 
 #### Current milestone: clock and interaction foundation
 
@@ -379,24 +380,26 @@ flowchart TD
 
 ### 実装状況
 
-| 領域 | 状況 | 内容 |
-| --- | --- | --- |
-| ビルド基盤 | 実装・ビルド確認済み | Arduino-ESP32 3.3.8の固定と、factory/customを分離したPlatformIO環境 |
-| 時計画面 | 実装・実機確認済み | 位置を固定した時刻欄、コンパクトな`yyyy.mm.dd. ddd`日付、再起動後も保持されるAM/PM付き12時間・24時間表示の選択 |
-| 独自7セグ風時計フォント | 実装・実機確認済み | DSEG7 Classic Boldを元にした36pxのT-Watch Custom Digitsを使用し、`6`/`9`へ`b`/`q`形を割り当て、文字切れがないことと項目ごとの中央揃えを確認済み |
-| RTC | 実装・実機確認済み | 時計画面表示時のRTC再読込と、独立した日付・時刻手動設定画面 |
-| 画面消灯 | 実装・一部実機確認済み | プリセットの変更・保存と再起動後の保持は確認済み。設定時間どおりの動作は確認待ち |
-| Light Sleep | 実装・一部実機確認済み | プリセットの変更と再起動後の保持は確認済み。設定時間どおりの動作は確認待ち |
-| デプロイモード | 実装・実機確認済み | 画面消灯の抑止、有効中の実機書き込み、再起動時の解除、通常の画面消灯・Light Sleepへの復帰を確認済み |
-| 電源オン・オフ | 実装・実機確認済み | 見切れのない左上寄せの起動画面を時計画面の前に3秒表示。竜頭を4秒長押しするとgraceful shutdown画面を3秒表示してAXP2101経由で電源を切り、電源オフ中は2秒長押しで起動。短押しの画面復帰も従来どおり |
-| 手首動作での画面復帰 | 実装・ビルド確認済み、実機確認待ち | BMA423の傾き検知により、画面消灯後の待機中とLight Sleep中の両方で画面を復帰。タッチ・竜頭・タイマーによる復帰も維持 |
-| バッテリー状態 | 実装・実機確認済み | 左上に常時表示する簡潔な残量、充電、USB給電、低残量表示 |
-| Wi-Fi・NTP | 実装・実機確認済み | Wi-Fi状態、再接続・切断操作、複数固定ネットワーク、自動同期の永続化、手動`SYNC NOW`、RTC更新、接続元に応じたWi-Fi停止 |
-| 明るさ設定 | 実装・実機確認済み | 即時プレビュー、`SAVE`/`CANCEL`、NVS永続化を備えた独立画面 |
-| 設定ハブ | 実装・ビルド確認済み | 時計画面の`SET`から`DATE & TIME`、`POWER & DISPLAY`、`BRIGHTNESS`、および`WI-FI & NTP`サブメニューを開く構成 |
-| 設定初期化 | 実装・実機確認済み | 確認画面を経て、明るさ・画面時間・時計形式・NTP自動同期を即時およびNVS上で初期値へ戻す |
-| キッチンタイマー | 実装・実機確認済み | 時計画面の`APPS`導線、タイマー画面、バックグラウンドカウントダウン、Light Sleep中の期限到達・復帰、音・バイブレーション通知、停止操作 |
-| ドキュメント | 実装済み | このプロジェクト専用の英語・日本語README |
+| 領域 | 実装 | 実機確認 | 内容 |
+| --- | :---: | :---: | --- |
+| ビルド基盤 | ○ | ー | Arduino-ESP32 3.3.8の固定と、factory/customを分離したPlatformIO環境 |
+| 時計画面 | ○ | ○ | 位置を固定した時刻欄、コンパクトな`yyyy.mm.dd. ddd`日付、再起動後も保持されるAM/PM付き12時間・24時間表示の選択 |
+| 独自7セグ風時計フォント | ○ | ○ | DSEG7 Classic Boldを元にした36pxのT-Watch Custom Digitsを使用し、`6`/`9`へ`b`/`q`形を割り当て、文字切れがないことと項目ごとの中央揃えを確認済み |
+| RTC | ○ | ○ | 時計画面表示時のRTC再読込と、独立した日付・時刻手動設定画面 |
+| 画面消灯 | ○ | △ | プリセットの変更・保存と再起動後の保持は確認済み。設定時間どおりの動作は確認待ち |
+| Light Sleep | ○ | △ | プリセットの変更と再起動後の保持は確認済み。設定時間どおりの動作は確認待ち |
+| デプロイモード | ○ | ○ | 画面消灯の抑止、有効中の実機書き込み、再起動時の解除、通常の画面消灯・Light Sleepへの復帰を確認済み |
+| 電源オン・オフ | ○ | ○ | 見切れのない左上寄せの起動画面を時計画面の前に3秒表示。竜頭を4秒長押しするとgraceful shutdown画面を3秒表示してAXP2101経由で電源を切り、電源オフ中は2秒長押しで起動。短押しの画面復帰も従来どおり |
+| 手首動作での画面復帰 | ○ | ○ | BMA423の傾き検知により、画面消灯後の待機中とLight Sleep中の両方で画面を復帰。タッチ・竜頭・タイマーによる復帰も維持 |
+| バッテリー状態 | ○ | ○ | 左上に常時表示する簡潔な残量、充電、USB給電、低残量表示 |
+| Wi-Fi・NTP | ○ | ○ | Wi-Fi状態、再接続・切断操作、複数固定ネットワーク、自動同期の永続化、手動`SYNC NOW`、RTC更新、接続元に応じたWi-Fi停止 |
+| 明るさ設定 | ○ | ○ | 即時プレビュー、`SAVE`/`CANCEL`、NVS永続化を備えた独立画面 |
+| 設定ハブ | ○ |  | 時計画面の`SET`から`DATE & TIME`、`POWER & DISPLAY`、`BRIGHTNESS`、および`WI-FI & NTP`サブメニューを開く構成 |
+| 設定初期化 | ○ | ○ | 確認画面を経て、明るさ・画面時間・時計形式・NTP自動同期を即時およびNVS上で初期値へ戻す |
+| キッチンタイマー | ○ | ○ | 時計画面の`APPS`導線、タイマー画面、バックグラウンドカウントダウン、Light Sleep中の期限到達・復帰、音・バイブレーション通知、停止操作 |
+| ドキュメント | ○ | ー | このプロジェクト専用の英語・日本語README |
+
+凡例：`○`＝済、`△`＝一部済、空白＝未対応、`ー`＝対象外。
 
 ### ロードマップ
 
@@ -408,8 +411,6 @@ flowchart TD
   画面復帰が従来どおりであることを確認
 - [x] 12時間・24時間表示の両方で、T-Watch Custom Digitsの視認性、
   `b`/`q`形、文字切れ、項目ごとの中央揃えを確認
-- [ ] 画面消灯後の待機中とLight Sleep中に手首動作で復帰すること、
-  誤復帰の傾向、およびタッチ・竜頭・タイマー復帰に影響がないことを確認
 
 #### 現在のマイルストーン：時計・操作基盤の仕上げ
 
