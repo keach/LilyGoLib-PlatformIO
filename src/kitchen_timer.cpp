@@ -39,14 +39,23 @@ void KitchenTimer::adjustSeconds(int32_t delta_seconds)
 
 bool KitchenTimer::start(uint32_t now_ms)
 {
-    if (state_ != KitchenTimerState::Idle) {
+    if (state_ != KitchenTimerState::Idle || configured_duration_ms_ == 0) {
         return false;
     }
     end_ms_ = now_ms + configured_duration_ms_;
     paused_remaining_ms_ = 0;
-    alert_started_ms_ = 0;
     state_ = KitchenTimerState::Running;
     return true;
+}
+
+void KitchenTimer::reset()
+{
+    if (state_ == KitchenTimerState::Running ||
+        state_ == KitchenTimerState::Alerting) {
+        return;
+    }
+    cancel();
+    configured_duration_ms_ = 0;
 }
 
 bool KitchenTimer::pause(uint32_t now_ms)
@@ -82,7 +91,6 @@ void KitchenTimer::cancel()
     state_ = KitchenTimerState::Idle;
     end_ms_ = 0;
     paused_remaining_ms_ = 0;
-    alert_started_ms_ = 0;
 }
 
 void KitchenTimer::stopAlert()
@@ -96,15 +104,7 @@ void KitchenTimer::update(uint32_t now_ms)
 {
     if (state_ == KitchenTimerState::Running && deadlineReached(now_ms, end_ms_)) {
         state_ = KitchenTimerState::Alerting;
-        // Anchor the notification phase and duration to the actual timer
-        // deadline, not to the first update that happens to observe expiry.
-        alert_started_ms_ = end_ms_;
         paused_remaining_ms_ = 0;
-    }
-
-    if (state_ == KitchenTimerState::Alerting &&
-        now_ms - alert_started_ms_ >= kAlertDurationMs) {
-        cancel();
     }
 }
 
@@ -133,14 +133,4 @@ uint32_t KitchenTimer::remainingSeconds(uint32_t now_ms) const
 {
     const uint32_t remaining_ms = remainingMilliseconds(now_ms);
     return (remaining_ms + 999) / 1000;
-}
-
-bool KitchenTimer::alertOutputActive(uint32_t now_ms) const
-{
-    if (state_ != KitchenTimerState::Alerting) {
-        return false;
-    }
-    const uint32_t elapsed_ms = now_ms - alert_started_ms_;
-    return elapsed_ms < kAlertDurationMs &&
-           (elapsed_ms / kAlertPhaseMs) % 2 == 0;
 }

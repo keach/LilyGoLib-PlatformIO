@@ -37,10 +37,14 @@ KitchenTimerScreen::KitchenTimerScreen(KitchenTimer &timer,
 {
 }
 
-void KitchenTimerScreen::create(BackCallback back_callback, void *back_context)
+void KitchenTimerScreen::create(BackCallback back_callback, void *back_context,
+                                SettingsCallback settings_callback,
+                                void *settings_context)
 {
     back_callback_ = back_callback;
     back_context_ = back_context;
+    settings_callback_ = settings_callback;
+    settings_context_ = settings_context;
 
     screen_ = lv_obj_create(nullptr);
     styleScreen();
@@ -54,7 +58,7 @@ void KitchenTimerScreen::create(BackCallback back_callback, void *back_context)
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 6);
 
     time_label_ = lv_label_create(screen_);
-    lv_label_set_text(time_label_, "01:00");
+    lv_label_set_text(time_label_, "00:00");
     lv_obj_set_style_text_font(time_label_, &lv_font_montserrat_32, 0);
     lv_obj_set_style_text_color(time_label_, lv_color_hex(primary_color_), 0);
     lv_obj_align(time_label_, LV_ALIGN_TOP_MID, 0, 30);
@@ -65,8 +69,8 @@ void KitchenTimerScreen::create(BackCallback back_callback, void *back_context)
     lv_obj_set_style_text_color(state_label_, lv_color_hex(muted_color_), 0);
     lv_obj_align(state_label_, LV_ALIGN_TOP_MID, 0, 66);
 
-    constexpr uint32_t presets[] = {60, 180, 300, 600};
-    const char *preset_labels[] = {"1M", "3M", "5M", "10M"};
+    constexpr uint32_t presets[] = {300, 600, 1800, 3600};
+    const char *preset_labels[] = {"5M", "10M", "30M", "60M"};
     for (int index = 0; index < 4; ++index) {
         createButton(preset_labels[index], 10 + index * 56, 88, 52, 30,
                      presetCallback,
@@ -74,14 +78,16 @@ void KitchenTimerScreen::create(BackCallback back_callback, void *back_context)
                          static_cast<uintptr_t>(presets[index])));
     }
 
-    createButton("-1M", 10, 124, 52, 30, adjustCallback,
-                 reinterpret_cast<void *>(static_cast<intptr_t>(-60)));
-    createButton("-10S", 66, 124, 52, 30, adjustCallback,
-                 reinterpret_cast<void *>(static_cast<intptr_t>(-10)));
-    createButton("+10S", 122, 124, 52, 30, adjustCallback,
-                 reinterpret_cast<void *>(static_cast<intptr_t>(10)));
-    createButton("+1M", 178, 124, 52, 30, adjustCallback,
-                 reinterpret_cast<void *>(static_cast<intptr_t>(60)));
+    constexpr int32_t adjustments[] = {-600, -60, -10, 10, 60, 600};
+    const char *adjustment_labels[] = {
+        "-10M", "-1M", "-10S", "+10S", "+1M", "+10M"};
+    for (int index = 0; index < 6; ++index) {
+        createButton(adjustment_labels[index], 10 + index * 37, 124, 34, 30,
+                     adjustCallback,
+                     reinterpret_cast<void *>(
+                         static_cast<intptr_t>(adjustments[index])),
+                     &lv_font_montserrat_10);
+    }
 
     primary_button_ = createButton("START", 10, 164, 108, 38,
                                    primaryActionCallback);
@@ -94,7 +100,8 @@ void KitchenTimerScreen::create(BackCallback back_callback, void *back_context)
                                   cancelCallback);
     cancel_button_label_ = lv_obj_get_child(cancel_button_, 0);
 
-    createButton("BACK", 10, 208, 220, 26, backCallback);
+    createButton("SETTINGS", 10, 208, 108, 26, settingsCallback);
+    createButton("BACK", 122, 208, 108, 26, backCallback);
     refresh(millis());
 }
 
@@ -160,6 +167,15 @@ void KitchenTimerScreen::backCallback(lv_event_t *event)
     }
 }
 
+void KitchenTimerScreen::settingsCallback(lv_event_t *event)
+{
+    auto *button = lv_event_get_current_target_obj(event);
+    auto *self = static_cast<KitchenTimerScreen *>(lv_obj_get_user_data(button));
+    if (self != nullptr) {
+        self->showSettings();
+    }
+}
+
 void KitchenTimerScreen::screenLoadCallback(lv_event_t *event)
 {
     auto *self = static_cast<KitchenTimerScreen *>(lv_event_get_user_data(event));
@@ -171,7 +187,8 @@ void KitchenTimerScreen::screenLoadCallback(lv_event_t *event)
 lv_obj_t *KitchenTimerScreen::createButton(const char *text, int x, int y,
                                            int width, int height,
                                            lv_event_cb_t callback,
-                                           void *user_data)
+                                           void *user_data,
+                                           const lv_font_t *font)
 {
     lv_obj_t *button = lv_button_create(screen_);
     lv_obj_set_pos(button, x, y);
@@ -182,7 +199,7 @@ lv_obj_t *KitchenTimerScreen::createButton(const char *text, int x, int y,
 
     lv_obj_t *label = lv_label_create(button);
     lv_label_set_text(label, text);
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(label, font, 0);
     lv_obj_center(label);
     return button;
 }
@@ -240,12 +257,22 @@ void KitchenTimerScreen::primaryAction()
 
 void KitchenTimerScreen::cancelOrStop()
 {
-    if (timer_.state() == KitchenTimerState::Alerting) {
+    if (timer_.state() == KitchenTimerState::Idle ||
+        timer_.state() == KitchenTimerState::Paused) {
+        timer_.reset();
+    } else if (timer_.state() == KitchenTimerState::Alerting) {
         timer_.stopAlert();
     } else {
         timer_.cancel();
     }
     updateLabels(millis());
+}
+
+void KitchenTimerScreen::showSettings()
+{
+    if (settings_callback_ != nullptr) {
+        settings_callback_(settings_context_);
+    }
 }
 
 void KitchenTimerScreen::goBack()
@@ -285,6 +312,19 @@ void KitchenTimerScreen::updateLabels(uint32_t now_ms)
         primary_text = "STOP";
     }
     lv_label_set_text(primary_button_label_, primary_text);
-    lv_label_set_text(cancel_button_label_,
-                      state == KitchenTimerState::Alerting ? "STOP" : "CANCEL");
+    const char *cancel_text = "CANCEL";
+    if (state == KitchenTimerState::Idle ||
+        state == KitchenTimerState::Paused) {
+        cancel_text = "RESET";
+    } else if (state == KitchenTimerState::Alerting) {
+        cancel_text = "STOP";
+    }
+    lv_label_set_text(cancel_button_label_, cancel_text);
+
+    if (state == KitchenTimerState::Idle &&
+        timer_.configuredSeconds() == 0) {
+        lv_obj_add_state(primary_button_, LV_STATE_DISABLED);
+    } else {
+        lv_obj_remove_state(primary_button_, LV_STATE_DISABLED);
+    }
 }

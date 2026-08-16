@@ -13,7 +13,12 @@ KitchenTimerApp::KitchenTimerApp(uint32_t background_color,
               primary_color,
               accent_color,
               muted_color,
-              button_color)
+              button_color),
+      settings_screen_(background_color,
+                       primary_color,
+                       accent_color,
+                       muted_color,
+                       button_color)
 {
 }
 
@@ -27,7 +32,13 @@ void KitchenTimerApp::create(BackCallback back_callback,
     wake_callback_ = wake_callback;
     wake_context_ = wake_context;
 
-    screen_.create(back_callback, back_context);
+    runtime_.setNotificationMode(
+        settings_store_.loadMode(NotificationTarget::KitchenTimer));
+    screen_.create(back_callback, back_context,
+                   showSettingsCallback, this);
+    settings_screen_.create("TIMER SETTINGS",
+                            saveSettingsCallback, this,
+                            closeSettingsCallback, this);
     runtime_.setWakeCallback(runtimeWakeCallback, this);
     runtime_.setAlertOutputCallback(alert_output_callback,
                                     alert_output_context);
@@ -35,9 +46,15 @@ void KitchenTimerApp::create(BackCallback back_callback,
 
 void KitchenTimerApp::show()
 {
+    showTimerScreen(false);
+}
+
+void KitchenTimerApp::showTimerScreen(bool move_right)
+{
     screen_.refresh(millis());
     lv_screen_load_anim(screen_.screen(),
-                        LV_SCR_LOAD_ANIM_MOVE_LEFT,
+                        move_right ? LV_SCR_LOAD_ANIM_MOVE_RIGHT
+                                   : LV_SCR_LOAD_ANIM_MOVE_LEFT,
                         180,
                         0,
                         false);
@@ -67,6 +84,11 @@ KitchenTimerState KitchenTimerApp::state() const
     return timer_.state();
 }
 
+uint32_t KitchenTimerApp::remainingSeconds(uint32_t now_ms) const
+{
+    return timer_.remainingSeconds(now_ms);
+}
+
 lv_obj_t *KitchenTimerApp::screen() const
 {
     return screen_.screen();
@@ -84,4 +106,42 @@ void KitchenTimerApp::runtimeWakeCallback(void *context)
     }
 
     self->show();
+}
+
+void KitchenTimerApp::showSettingsCallback(void *context)
+{
+    auto *self = static_cast<KitchenTimerApp *>(context);
+    if (self != nullptr) {
+        self->showSettingsScreen();
+    }
+}
+
+void KitchenTimerApp::closeSettingsCallback(void *context)
+{
+    auto *self = static_cast<KitchenTimerApp *>(context);
+    if (self != nullptr) {
+        self->showTimerScreen(true);
+    }
+}
+
+void KitchenTimerApp::saveSettingsCallback(NotificationMode mode,
+                                           void *context)
+{
+    auto *self = static_cast<KitchenTimerApp *>(context);
+    if (self != nullptr) {
+        self->saveNotificationMode(mode);
+    }
+}
+
+void KitchenTimerApp::showSettingsScreen()
+{
+    settings_screen_.show(runtime_.notificationMode());
+}
+
+void KitchenTimerApp::saveNotificationMode(NotificationMode mode)
+{
+    runtime_.setNotificationMode(mode);
+    if (!settings_store_.saveMode(NotificationTarget::KitchenTimer, mode)) {
+        Serial.println("Kitchen timer notification mode: save failed");
+    }
 }
