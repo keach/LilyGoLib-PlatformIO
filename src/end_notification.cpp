@@ -19,10 +19,13 @@ bool isValidNotificationMode(uint8_t value)
 }
 
 void EndNotification::start(NotificationTarget target, NotificationMode mode,
+                            NotificationSoundPreset sound_preset,
                             uint32_t now_ms)
 {
     target_ = target;
     mode_ = mode;
+    sound_preset_ = resolveNotificationSoundPreset(
+        static_cast<uint8_t>(sound_preset));
     started_ms_ = now_ms;
     active_ = true;
 }
@@ -35,6 +38,12 @@ void EndNotification::stop()
 void EndNotification::setMode(NotificationMode mode)
 {
     mode_ = mode;
+}
+
+void EndNotification::setSoundPreset(NotificationSoundPreset sound_preset)
+{
+    sound_preset_ = resolveNotificationSoundPreset(
+        static_cast<uint8_t>(sound_preset));
 }
 
 void EndNotification::update(uint32_t now_ms)
@@ -59,10 +68,16 @@ NotificationMode EndNotification::mode() const
     return mode_;
 }
 
+NotificationSoundPreset EndNotification::soundPreset() const
+{
+    return sound_preset_;
+}
+
 NotificationOutputState EndNotification::output(uint32_t now_ms) const
 {
     NotificationOutputState state;
     state.target = target_;
+    state.sound_preset = sound_preset_;
     if (!active_ || (now_ms - started_ms_) / kPhaseMs % 2 != 0) {
         return state;
     }

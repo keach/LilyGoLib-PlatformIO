@@ -18,7 +18,12 @@ KitchenTimerApp::KitchenTimerApp(uint32_t background_color,
                        primary_color,
                        accent_color,
                        muted_color,
-                       button_color)
+                       button_color),
+      sound_settings_screen_(background_color,
+                             primary_color,
+                             accent_color,
+                             muted_color,
+                             button_color)
 {
 }
 
@@ -27,18 +32,29 @@ void KitchenTimerApp::create(BackCallback back_callback,
                              WakeCallback wake_callback,
                              void *wake_context,
                              AlertOutputCallback alert_output_callback,
-                             void *alert_output_context)
+                             void *alert_output_context,
+                             PreviewSoundCallback preview_sound_callback,
+                             void *preview_sound_context)
 {
     wake_callback_ = wake_callback;
     wake_context_ = wake_context;
+    preview_sound_callback_ = preview_sound_callback;
+    preview_sound_context_ = preview_sound_context;
 
     runtime_.setNotificationMode(
         settings_store_.loadMode(NotificationTarget::KitchenTimer));
+    runtime_.setNotificationSoundPreset(
+        settings_store_.loadSoundPreset(NotificationTarget::KitchenTimer));
     screen_.create(back_callback, back_context,
                    showSettingsCallback, this);
     settings_screen_.create("TIMER SETTINGS",
                             saveSettingsCallback, this,
+                            showSoundSettingsCallback, this,
                             closeSettingsCallback, this);
+    sound_settings_screen_.create(
+        selectSoundPresetCallback, this,
+        previewSoundCallback, this,
+        closeSoundSettingsCallback, this);
     runtime_.setWakeCallback(runtimeWakeCallback, this);
     runtime_.setAlertOutputCallback(alert_output_callback,
                                     alert_output_context);
@@ -124,24 +140,81 @@ void KitchenTimerApp::closeSettingsCallback(void *context)
     }
 }
 
-void KitchenTimerApp::saveSettingsCallback(NotificationMode mode,
-                                           void *context)
+void KitchenTimerApp::saveSettingsCallback(
+    NotificationMode mode,
+    NotificationSoundPreset sound_preset,
+    void *context)
 {
     auto *self = static_cast<KitchenTimerApp *>(context);
     if (self != nullptr) {
-        self->saveNotificationMode(mode);
+        self->saveNotificationSettings(mode, sound_preset);
     }
 }
 
 void KitchenTimerApp::showSettingsScreen()
 {
-    settings_screen_.show(runtime_.notificationMode());
+    settings_screen_.show(runtime_.notificationMode(),
+                          runtime_.notificationSoundPreset());
 }
 
-void KitchenTimerApp::saveNotificationMode(NotificationMode mode)
+void KitchenTimerApp::saveNotificationSettings(
+    NotificationMode mode, NotificationSoundPreset sound_preset)
 {
     runtime_.setNotificationMode(mode);
+    runtime_.setNotificationSoundPreset(sound_preset);
     if (!settings_store_.saveMode(NotificationTarget::KitchenTimer, mode)) {
         Serial.println("Kitchen timer notification mode: save failed");
+    }
+    if (!settings_store_.saveSoundPreset(NotificationTarget::KitchenTimer,
+                                         sound_preset)) {
+        Serial.println("Kitchen timer notification sound: save failed");
+    }
+}
+
+void KitchenTimerApp::showSoundSettingsCallback(
+    NotificationSoundPreset sound_preset, void *context)
+{
+    auto *self = static_cast<KitchenTimerApp *>(context);
+    if (self != nullptr) {
+        self->showSoundSettings(sound_preset);
+    }
+}
+
+void KitchenTimerApp::selectSoundPresetCallback(
+    NotificationSoundPreset sound_preset, void *context)
+{
+    auto *self = static_cast<KitchenTimerApp *>(context);
+    if (self != nullptr) {
+        self->settings_screen_.updateSoundPreset(sound_preset);
+    }
+}
+
+void KitchenTimerApp::previewSoundCallback(
+    NotificationSoundPreset sound_preset, void *context)
+{
+    auto *self = static_cast<KitchenTimerApp *>(context);
+    if (self != nullptr) {
+        self->previewSound(sound_preset);
+    }
+}
+
+void KitchenTimerApp::closeSoundSettingsCallback(void *context)
+{
+    auto *self = static_cast<KitchenTimerApp *>(context);
+    if (self != nullptr) {
+        self->settings_screen_.showPending();
+    }
+}
+
+void KitchenTimerApp::showSoundSettings(
+    NotificationSoundPreset sound_preset)
+{
+    sound_settings_screen_.show(sound_preset);
+}
+
+void KitchenTimerApp::previewSound(NotificationSoundPreset sound_preset)
+{
+    if (preview_sound_callback_ != nullptr) {
+        preview_sound_callback_(sound_preset, preview_sound_context_);
     }
 }

@@ -7,8 +7,12 @@
 
 class NotificationSettingsScreen {
 public:
-    using SaveCallback = void (*)(NotificationMode mode, void *context);
+    using SaveCallback = void (*)(NotificationMode mode,
+                                  NotificationSoundPreset sound_preset,
+                                  void *context);
     using BackCallback = void (*)(void *context);
+    using SoundSettingsCallback = void (*)(
+        NotificationSoundPreset sound_preset, void *context);
 
     NotificationSettingsScreen(uint32_t background_color,
                                uint32_t primary_color,
@@ -19,21 +23,29 @@ public:
     void create(const char *title,
                 SaveCallback save_callback,
                 void *save_context,
+                SoundSettingsCallback sound_settings_callback,
+                void *sound_settings_context,
                 BackCallback back_callback,
                 void *back_context);
-    void show(NotificationMode mode);
+    void show(NotificationMode mode, NotificationSoundPreset sound_preset);
+    void showPending();
+    void updateSoundPreset(NotificationSoundPreset sound_preset);
+    NotificationSoundPreset soundPreset() const;
     lv_obj_t *screen() const;
 
 private:
     static void modeCallback(lv_event_t *event);
     static void saveCallback(lv_event_t *event);
     static void cancelCallback(lv_event_t *event);
+    static void soundSettingsCallback(lv_event_t *event);
 
     lv_obj_t *createButton(const char *text, int x, int y,
                            int width, int height, lv_event_cb_t callback,
                            void *user_data = nullptr);
     void selectMode(NotificationMode mode);
     void updateSelection();
+    void updateSoundLabel();
+    void showSoundSettings();
     void save();
     void goBack();
 
@@ -44,9 +56,14 @@ private:
     uint32_t button_color_;
     lv_obj_t *screen_ = nullptr;
     lv_obj_t *mode_buttons_[3] = {};
+    lv_obj_t *sound_button_label_ = nullptr;
     NotificationMode selected_mode_ = NotificationMode::SoundAndVibration;
+    NotificationSoundPreset selected_sound_preset_ =
+        kDefaultNotificationSoundPreset;
     SaveCallback save_callback_ = nullptr;
     void *save_context_ = nullptr;
+    SoundSettingsCallback sound_settings_callback_ = nullptr;
+    void *sound_settings_context_ = nullptr;
     BackCallback back_callback_ = nullptr;
     void *back_context_ = nullptr;
 };

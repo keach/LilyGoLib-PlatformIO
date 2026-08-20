@@ -55,9 +55,12 @@ class KitchenTimerTest(unittest.TestCase):
 
                 EndNotification notification;
                 notification.start(NotificationTarget::KitchenTimer,
-                                   NotificationMode::SoundAndVibration, 1000);
+                                   NotificationMode::SoundAndVibration,
+                                   NotificationSoundPreset::DoubleBeep, 1000);
                 auto output = notification.output(1000);
                 assert(output.sound_active && output.vibration_active);
+                assert(output.sound_preset ==
+                       NotificationSoundPreset::DoubleBeep);
                 output = notification.output(2000);
                 assert(!output.sound_active && !output.vibration_active);
 
@@ -74,6 +77,30 @@ class KitchenTimerTest(unittest.TestCase):
                 assert(!notification.active());
                 output = notification.output(31000);
                 assert(!output.sound_active && !output.vibration_active);
+
+                assert(notificationSoundPresetCount() == 3);
+                assert(resolveNotificationSoundPreset(255) ==
+                       kDefaultNotificationSoundPreset);
+                assert(nextNotificationSoundPreset(
+                           NotificationSoundPreset::Classic) ==
+                       NotificationSoundPreset::DoubleBeep);
+                assert(previousNotificationSoundPreset(
+                           NotificationSoundPreset::Classic) ==
+                       NotificationSoundPreset::Ascending);
+                assert(notificationSoundFrequencyAt(
+                           NotificationSoundPreset::Classic, 0) == 1000);
+                assert(notificationSoundFrequencyAt(
+                           NotificationSoundPreset::DoubleBeep, 200) == 0);
+                assert(notificationSoundFrequencyAt(
+                           NotificationSoundPreset::DoubleBeep, 350) == 880);
+                assert(notificationSoundFrequencyAt(
+                           NotificationSoundPreset::Ascending, 100) == 659);
+                assert(notificationSoundFrequencyAt(
+                           NotificationSoundPreset::Ascending, 300) == 784);
+                assert(notificationSoundFrequencyAt(
+                           NotificationSoundPreset::Ascending, 600) == 1047);
+                assert(notificationSoundFrequencyAt(
+                           NotificationSoundPreset::Ascending, 900) == 0);
                 return 0;
             }
             """
@@ -91,6 +118,7 @@ class KitchenTimerTest(unittest.TestCase):
                     str(source),
                     str(ROOT / "src" / "kitchen_timer.cpp"),
                     str(ROOT / "src" / "end_notification.cpp"),
+                    str(ROOT / "src" / "notification_sound.cpp"),
                     "-o",
                     str(executable),
                 ],

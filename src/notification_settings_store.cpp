@@ -17,7 +17,7 @@ NotificationMode NotificationSettingsStore::loadMode(
     }
 
     const uint8_t stored = preferences.getUChar(
-        keyForTarget(target),
+        modeKeyForTarget(target),
         static_cast<uint8_t>(NotificationMode::SoundAndVibration));
     preferences.end();
     return isValidNotificationMode(stored)
@@ -33,12 +33,42 @@ bool NotificationSettingsStore::saveMode(NotificationTarget target,
         return false;
     }
     const bool saved = preferences.putUChar(
-        keyForTarget(target), static_cast<uint8_t>(mode)) > 0;
+        modeKeyForTarget(target), static_cast<uint8_t>(mode)) > 0;
     preferences.end();
     return saved;
 }
 
-const char *NotificationSettingsStore::keyForTarget(
+NotificationSoundPreset NotificationSettingsStore::loadSoundPreset(
+    NotificationTarget target) const
+{
+    Preferences preferences;
+    if (!preferences.begin(kPreferencesNamespace, true)) {
+        return kDefaultNotificationSoundPreset;
+    }
+
+    const uint8_t stored = preferences.getUChar(
+        soundKeyForTarget(target),
+        static_cast<uint8_t>(kDefaultNotificationSoundPreset));
+    preferences.end();
+    return resolveNotificationSoundPreset(stored);
+}
+
+bool NotificationSettingsStore::saveSoundPreset(
+    NotificationTarget target, NotificationSoundPreset preset) const
+{
+    Preferences preferences;
+    if (!preferences.begin(kPreferencesNamespace, false)) {
+        return false;
+    }
+    const bool saved = preferences.putUChar(
+        soundKeyForTarget(target),
+        static_cast<uint8_t>(resolveNotificationSoundPreset(
+            static_cast<uint8_t>(preset)))) > 0;
+    preferences.end();
+    return saved;
+}
+
+const char *NotificationSettingsStore::modeKeyForTarget(
     NotificationTarget target)
 {
     switch (target) {
@@ -50,4 +80,18 @@ const char *NotificationSettingsStore::keyForTarget(
         return "alarm_mode";
     }
     return "kitchen_mode";
+}
+
+const char *NotificationSettingsStore::soundKeyForTarget(
+    NotificationTarget target)
+{
+    switch (target) {
+    case NotificationTarget::KitchenTimer:
+        return "kitchen_sound";
+    case NotificationTarget::PomodoroTimer:
+        return "pomodoro_sound";
+    case NotificationTarget::ScheduledAlarm:
+        return "alarm_sound";
+    }
+    return "kitchen_sound";
 }
