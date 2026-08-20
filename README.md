@@ -35,7 +35,7 @@ UTC+9).
 | Brightness setting | YES | YES | Separate live-preview screen with `SAVE`/`CANCEL` and NVS persistence |
 | Settings hub | YES |  | The clock-screen `SET` button opens `DATE & TIME`, `POWER & DISPLAY`, `BRIGHTNESS`, grouped `WI-FI & NTP`, and `ABOUT` screens |
 | Restore defaults | YES | YES | Confirmation screen restores brightness, display timeouts, clock format, and automatic time sync defaults immediately and in NVS |
-| Kitchen timer | YES | YES | Clock-screen `APPS` entry, timer screen, background countdown, Light Sleep timer wake, audible alert, vibration, and alert stop flow |
+| Kitchen timer | YES | PARTLY | The original timer flow is device-tested. Issue #56 adds clock-face countdown, 5/10/30/60-minute presets, 0:00–99:59 adjustment and reset, 1000 ms alert vibration, and a persistent per-feature notification mode; these additions await device verification. |
 | Documentation | YES | - | Project-specific English and Japanese README |
 
 Status legend: `YES` = complete, `PARTLY` = partially complete, blank = not yet
@@ -58,6 +58,7 @@ completed, `-` = not applicable.
 
 - [x] Power on/off with a long press of the crown
 - [x] Kitchen timer with background countdown, Light Sleep wake, sound, and vibration ([#32](https://github.com/keach/t-watch-s3-custom/issues/32))
+- [ ] Kitchen timer enhancements and reusable end-notification foundation ([#56](https://github.com/keach/t-watch-s3-custom/issues/56))
 - [ ] Japanese font and text-rendering foundation
 
 #### Following milestone: network information
@@ -212,7 +213,9 @@ flowchart TD
 ```
 
 - Use `SET` on the clock screen to open the settings hub.
-- Use `APPS` to open the apps hub and enter the kitchen timer without going through settings. The countdown continues in the background; expiry wakes the watch from Light Sleep and starts sound and vibration until stopped.
+- Use `APPS` to open the apps hub and enter the kitchen timer without going through settings. The countdown continues in the background and is also shown on the clock face while running or paused. Expiry wakes the watch from Light Sleep and starts the selected end notification until stopped.
+- The kitchen timer supports 5, 10, 30, and 60-minute presets, 10-second, 1-minute, and 10-minute adjustments, and a range of 0:00–99:59. `START` is disabled at 0:00, while `RESET` clears an idle or paused timer to 0:00.
+- `TIMER SETTINGS` stores one of `SOUND + VIBRATION`, `SOUND ONLY`, or `VIBRATION ONLY` in NVS for the kitchen timer. The common notification model and target-specific storage are designed for the planned Pomodoro timer and scheduled alarm. Sound preset selection and preview belong to [#57](https://github.com/keach/t-watch-s3-custom/issues/57), and common master volume belongs to [#59](https://github.com/keach/t-watch-s3-custom/issues/59).
 - Select `DATE & TIME`, `POWER & DISPLAY`, `BRIGHTNESS`, `WI-FI & NTP`, or `ABOUT` in
   the hub. The `WI-FI & NTP` submenu opens the existing `WI-FI` and
   `TIME SYNC` screens. `SAVE`, `CANCEL`, and `BACK` return through the
@@ -406,7 +409,7 @@ flowchart TD
 | 明るさ設定 | ○ | ○ | 即時プレビュー、`SAVE`/`CANCEL`、NVS永続化を備えた独立画面 |
 | 設定ハブ | ○ |  | 時計画面の`SET`から`DATE & TIME`、`POWER & DISPLAY`、`BRIGHTNESS`、`WI-FI & NTP`サブメニュー、および`ABOUT`画面を開く構成 |
 | 設定初期化 | ○ | ○ | 確認画面を経て、明るさ・画面時間・時計形式・NTP自動同期を即時およびNVS上で初期値へ戻す |
-| キッチンタイマー | ○ | ○ | 時計画面の`APPS`導線、タイマー画面、バックグラウンドカウントダウン、Light Sleep中の期限到達・復帰、音・バイブレーション通知、停止操作 |
+| キッチンタイマー | ○ | △ | 従来のタイマー動作は実機確認済み。Issue #56で時計画面への残り時間表示、5/10/30/60分プリセット、0:00〜99:59の調整とリセット、1000 ms Alert振動、機能別通知方式の永続化を追加し、追加部分は実機確認待ち |
 | ドキュメント | ○ | ー | このプロジェクト専用の英語・日本語README |
 
 凡例：`○`＝済、`△`＝一部済、空白＝未対応、`ー`＝対象外。
@@ -429,6 +432,7 @@ flowchart TD
 
 - [x] 竜頭長押しによる電源オン・オフ
 - [x] バックグラウンド動作、Light Sleep復帰、音・バイブレーション通知を備えたキッチンタイマー（[#32](https://github.com/keach/t-watch-s3-custom/issues/32)）
+- [ ] キッチンタイマー追加機能と再利用可能な終了通知基盤（[#56](https://github.com/keach/t-watch-s3-custom/issues/56)）
 - [ ] 日本語フォント・表示基盤
 
 #### 次のマイルストーン：ネットワーク情報
@@ -582,7 +586,9 @@ flowchart TD
 ```
 
 - 時計画面の`SET`から設定ハブを開きます。
-- `APPS`から設定ハブを経由せずアプリハブを開き、キッチンタイマーへ移動できます。カウントダウンはバックグラウンドでも継続し、期限到達時はLight Sleepから復帰して、停止するまで音とバイブレーションで通知します。
+- `APPS`から設定ハブを経由せずアプリハブを開き、キッチンタイマーへ移動できます。カウントダウンはバックグラウンドでも継続し、実行中または一時停止中は時計画面にも残り時間を表示します。期限到達時はLight Sleepから復帰して、停止するまで選択した方式で通知します。
+- キッチンタイマーは5、10、30、60分のプリセットと、10秒、1分、10分単位の増減に対応し、0:00〜99:59の範囲で設定できます。0:00では`START`を無効化し、待機中または一時停止中の`RESET`で0:00へ戻します。
+- `TIMER SETTINGS`では、キッチンタイマーの通知方式を`SOUND + VIBRATION`、`SOUND ONLY`、`VIBRATION ONLY`から選び、NVSへ保存します。共通通知モデルと機能別ストレージは、今後のポモドーロタイマーと指定時刻アラームからも利用できます。通知音の選択・試聴は[#57](https://github.com/keach/t-watch-s3-custom/issues/57)、共通マスター音量は[#59](https://github.com/keach/t-watch-s3-custom/issues/59)で扱います。
 - ハブで`DATE & TIME`、`POWER & DISPLAY`、`BRIGHTNESS`、`WI-FI & NTP`、`ABOUT`の
   いずれかを選択します。`WI-FI & NTP`サブメニューから、既存の`WI-FI`画面と
   `TIME SYNC`画面へ移動します。`SAVE`、`CANCEL`、`BACK`は対応する親画面へ戻り、

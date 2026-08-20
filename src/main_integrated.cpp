@@ -14,16 +14,19 @@ constexpr size_t kTimerAlertFrameCount =
     kTimerAlertSampleRate * kTimerAlertChunkDurationMs / 1000;
 constexpr size_t kTimerAlertSampleCount = kTimerAlertFrameCount * 2;
 constexpr float kTimerAlertVolume = 0.35F;
-constexpr uint32_t kTimerVibrationRepeatMs = 100;
 constexpr uint32_t kTimerSpeakerStartupDelayMs = 20;
 constexpr uint64_t kMinimumTimerWakeupUs = 1000ULL;
+constexpr uint8_t kAlert1000MsEffect = 16;
 
 int16_t timer_alert_samples[kTimerAlertSampleCount];
-bool timer_alert_output_active = false;
+bool notification_sound_active = false;
+bool notification_vibration_active = false;
 bool timer_audio_ready = false;
 bool timer_audio_write_failure_reported = false;
 uint32_t timer_speaker_enabled_ms = 0;
-uint32_t last_timer_vibration_ms = 0;
+lv_obj_t *timer_countdown_clock_label = nullptr;
+KitchenTimerState last_clock_timer_state = KitchenTimerState::Idle;
+uint32_t last_clock_timer_seconds = UINT32_MAX;
 
 AppHubScreen app_hub_screen(kBackgroundColor,
                             kPrimaryColor,
@@ -103,30 +106,40 @@ void wakeForKitchenTimer(void *)
     last_activity_ms = millis();
 }
 
-void setKitchenTimerAlertOutput(bool active, void *)
+void setEndNotificationOutput(NotificationOutputState output, void *)
 {
-    timer_alert_output_active = active;
-    if (!active) {
-        instance.powerControl(POWER_SPEAK, false);
-        return;
+    if (notification_sound_active != output.sound_active) {
+        notification_sound_active = output.sound_active;
+        if (!notification_sound_active) {
+            instance.powerControl(POWER_SPEAK, false);
+        } else {
+            const uint32_t now_ms = millis();
+            if (!timer_audio_ready) {
+                initializeTimerAudio();
+            }
+            if (timer_audio_ready) {
+                instance.powerControl(POWER_SPEAK, true);
+                timer_speaker_enabled_ms = now_ms;
+                timer_audio_write_failure_reported = false;
+            }
+        }
     }
 
-    const uint32_t now_ms = millis();
-    last_timer_vibration_ms = now_ms - kTimerVibrationRepeatMs;
-
-    if (!timer_audio_ready) {
-        initializeTimerAudio();
-    }
-    if (timer_audio_ready) {
-        instance.powerControl(POWER_SPEAK, true);
-        timer_speaker_enabled_ms = now_ms;
-        timer_audio_write_failure_reported = false;
+    if (notification_vibration_active != output.vibration_active) {
+        notification_vibration_active = output.vibration_active;
+        if (notification_vibration_active) {
+            instance.drv.setWaveform(0, kAlert1000MsEffect);
+            instance.drv.setWaveform(1, 0);
+            instance.drv.run();
+        } else {
+            instance.drv.stop();
+        }
     }
 }
 
-void serviceKitchenTimerAlertOutput(uint32_t now_ms)
+void serviceEndNotificationOutput(uint32_t now_ms)
 {
-    if (!timer_alert_output_active) {
+    if (!notification_sound_active) {
         return;
     }
 
@@ -141,12 +154,44 @@ void serviceKitchenTimerAlertOutput(uint32_t now_ms)
         }
     }
 
-    if (now_ms - last_timer_vibration_ms >= kTimerVibrationRepeatMs) {
-        last_timer_vibration_ms = now_ms;
-        instance.drv.setWaveform(0, 1);
-        instance.drv.setWaveform(1, 0);
-        instance.drv.run();
+}
+
+void createTimerCountdownClockLabel()
+{
+    timer_countdown_clock_label = lv_label_create(clock_screen);
+    lv_label_set_text(timer_countdown_clock_label, "");
+    lv_obj_set_style_text_font(timer_countdown_clock_label,
+                               &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(timer_countdown_clock_label,
+                                lv_color_hex(kAccentColor), 0);
+    lv_obj_align(timer_countdown_clock_label, LV_ALIGN_BOTTOM_MID, 0, -42);
+    lv_obj_add_flag(timer_countdown_clock_label, LV_OBJ_FLAG_HIDDEN);
+}
+
+void updateTimerCountdownClockLabel(uint32_t now_ms)
+{
+    const KitchenTimerState state = kitchen_timer_app.state();
+    const uint32_t seconds = kitchen_timer_app.remainingSeconds(now_ms);
+    if (state == last_clock_timer_state &&
+        seconds == last_clock_timer_seconds) {
+        return;
     }
+    last_clock_timer_state = state;
+    last_clock_timer_seconds = seconds;
+
+    if (state != KitchenTimerState::Running &&
+        state != KitchenTimerState::Paused) {
+        lv_obj_add_flag(timer_countdown_clock_label, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    lv_label_set_text_fmt(
+        timer_countdown_clock_label,
+        state == KitchenTimerState::Paused ? "TIMER PAUSED %02lu:%02lu"
+                                           : "TIMER %02lu:%02lu",
+        static_cast<unsigned long>(seconds / 60),
+        static_cast<unsigned long>(seconds % 60));
+    lv_obj_remove_flag(timer_countdown_clock_label, LV_OBJ_FLAG_HIDDEN);
 }
 
 uint64_t combinedTimerWakeupUs(bool &kitchen_timer_wakeup)
@@ -253,7 +298,7 @@ void setup()
                              nullptr,
                              wakeForKitchenTimer,
                              nullptr,
-                             setKitchenTimerAlertOutput,
+                             setEndNotificationOutput,
                              nullptr);
 
     createButton(clock_screen,
@@ -263,6 +308,7 @@ void setup()
                  58,
                  30,
                  showAppsFromClock);
+    createTimerCountdownClockLabel();
     lv_refr_now(nullptr);
 }
 
@@ -281,7 +327,8 @@ void loop()
     updateTimeSyncNotification();
     const uint32_t now_ms = millis();
     kitchen_timer_app.update(now_ms);
-    serviceKitchenTimerAlertOutput(now_ms);
+    updateTimerCountdownClockLabel(now_ms);
+    serviceEndNotificationOutput(now_ms);
 
     if (!deploy_mode_enabled && screen_on &&
         millis() - last_activity_ms >= currentScreenTimeout()) {

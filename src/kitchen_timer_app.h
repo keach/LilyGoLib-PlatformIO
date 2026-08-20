@@ -5,6 +5,8 @@
 #include "kitchen_timer.h"
 #include "kitchen_timer_runtime.h"
 #include "kitchen_timer_screen.h"
+#include "notification_settings_screen.h"
+#include "notification_settings_store.h"
 
 class KitchenTimerApp {
 public:
@@ -32,14 +34,24 @@ public:
                                    uint32_t &delay_ms) const;
     bool requiresAwake() const;
     KitchenTimerState state() const;
+    uint32_t remainingSeconds(uint32_t now_ms) const;
     lv_obj_t *screen() const;
 
 private:
     static void runtimeWakeCallback(void *context);
+    static void showSettingsCallback(void *context);
+    static void closeSettingsCallback(void *context);
+    static void saveSettingsCallback(NotificationMode mode, void *context);
+
+    void showTimerScreen(bool move_right);
+    void showSettingsScreen();
+    void saveNotificationMode(NotificationMode mode);
 
     KitchenTimer timer_;
     KitchenTimerRuntime runtime_;
     KitchenTimerScreen screen_;
+    NotificationSettingsScreen settings_screen_;
+    NotificationSettingsStore settings_store_;
 
     WakeCallback wake_callback_ = nullptr;
     void *wake_context_ = nullptr;
