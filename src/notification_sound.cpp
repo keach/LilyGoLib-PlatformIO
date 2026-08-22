@@ -20,16 +20,16 @@ NotificationSoundPreset resolveNotificationSoundPreset(uint8_t value)
 const char *notificationSoundPresetLabel(NotificationSoundPreset preset)
 {
     switch (resolveNotificationSoundPreset(static_cast<uint8_t>(preset))) {
-    case NotificationSoundPreset::Classic:
-        return "CLASSIC";
+    case NotificationSoundPreset::Success:
+        return "SUCCESS";
     case NotificationSoundPreset::DoubleBeep:
         return "DOUBLE BEEP";
-    case NotificationSoundPreset::Ascending:
-        return "ASCENDING";
+    case NotificationSoundPreset::Urgent:
+        return "URGENT";
     case NotificationSoundPreset::Count:
         break;
     }
-    return "CLASSIC";
+    return "SUCCESS";
 }
 
 NotificationSoundPreset previousNotificationSoundPreset(
@@ -60,27 +60,60 @@ uint16_t notificationSoundFrequencyAt(NotificationSoundPreset preset,
     }
 
     switch (resolveNotificationSoundPreset(static_cast<uint8_t>(preset))) {
-    case NotificationSoundPreset::Classic:
-        return 1000;
+    case NotificationSoundPreset::Success:
+        if (elapsed_ms < 120) {
+            return 1047;
+        }
+        if (elapsed_ms < 160) {
+            return 0;
+        }
+        if (elapsed_ms < 280) {
+            return 1319;
+        }
+        if (elapsed_ms < 320) {
+            return 0;
+        }
+        if (elapsed_ms < 480) {
+            return 1568;
+        }
+        if (elapsed_ms < 520) {
+            return 0;
+        }
+        if (elapsed_ms < 640) {
+            return 1319;
+        }
+        if (elapsed_ms < 680) {
+            return 0;
+        }
+        return 2093;
     case NotificationSoundPreset::DoubleBeep:
         if (elapsed_ms < 180 ||
             (elapsed_ms >= 300 && elapsed_ms < 480)) {
             return 880;
         }
         return 0;
-    case NotificationSoundPreset::Ascending:
-        if (elapsed_ms < 250) {
-            return 659;
+    case NotificationSoundPreset::Urgent:
+        if (elapsed_ms < 120) {
+            return 880;
         }
-        if (elapsed_ms < 500) {
-            return 784;
+        if (elapsed_ms < 200) {
+            return 0;
         }
-        if (elapsed_ms < 800) {
-            return 1047;
+        if (elapsed_ms < 320) {
+            return 880;
         }
-        return 0;
+        if (elapsed_ms < 400) {
+            return 0;
+        }
+        if (elapsed_ms < 520) {
+            return 880;
+        }
+        if (elapsed_ms < 600) {
+            return 0;
+        }
+        return 1319;
     case NotificationSoundPreset::Count:
         break;
     }
-    return 1000;
+    return 1047;
 }

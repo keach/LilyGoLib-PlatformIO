@@ -48,7 +48,7 @@ void NotificationSoundSettingsScreen::create(
     lv_obj_align(description, LV_ALIGN_TOP_MID, 0, 44);
 
     preset_label_ = lv_label_create(screen_);
-    lv_label_set_text(preset_label_, "CLASSIC");
+    lv_label_set_text(preset_label_, "SUCCESS");
     lv_obj_set_width(preset_label_, 120);
     lv_obj_set_style_text_align(preset_label_, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(preset_label_, &lv_font_montserrat_16, 0);

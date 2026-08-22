@@ -82,25 +82,39 @@ class KitchenTimerTest(unittest.TestCase):
                 assert(resolveNotificationSoundPreset(255) ==
                        kDefaultNotificationSoundPreset);
                 assert(nextNotificationSoundPreset(
-                           NotificationSoundPreset::Classic) ==
+                           NotificationSoundPreset::Success) ==
                        NotificationSoundPreset::DoubleBeep);
                 assert(previousNotificationSoundPreset(
-                           NotificationSoundPreset::Classic) ==
-                       NotificationSoundPreset::Ascending);
+                           NotificationSoundPreset::Success) ==
+                       NotificationSoundPreset::Urgent);
                 assert(notificationSoundFrequencyAt(
-                           NotificationSoundPreset::Classic, 0) == 1000);
+                           NotificationSoundPreset::Success, 0) == 1047);
+                assert(notificationSoundFrequencyAt(
+                           NotificationSoundPreset::Success, 130) == 0);
+                assert(notificationSoundFrequencyAt(
+                           NotificationSoundPreset::Success, 200) == 1319);
+                assert(notificationSoundFrequencyAt(
+                           NotificationSoundPreset::Success, 400) == 1568);
+                assert(notificationSoundFrequencyAt(
+                           NotificationSoundPreset::Success, 560) == 1319);
+                assert(notificationSoundFrequencyAt(
+                           NotificationSoundPreset::Success, 800) == 2093);
                 assert(notificationSoundFrequencyAt(
                            NotificationSoundPreset::DoubleBeep, 200) == 0);
                 assert(notificationSoundFrequencyAt(
                            NotificationSoundPreset::DoubleBeep, 350) == 880);
                 assert(notificationSoundFrequencyAt(
-                           NotificationSoundPreset::Ascending, 100) == 659);
+                           NotificationSoundPreset::Urgent, 100) == 880);
                 assert(notificationSoundFrequencyAt(
-                           NotificationSoundPreset::Ascending, 300) == 784);
+                           NotificationSoundPreset::Urgent, 150) == 0);
                 assert(notificationSoundFrequencyAt(
-                           NotificationSoundPreset::Ascending, 600) == 1047);
+                           NotificationSoundPreset::Urgent, 250) == 880);
                 assert(notificationSoundFrequencyAt(
-                           NotificationSoundPreset::Ascending, 900) == 0);
+                           NotificationSoundPreset::Urgent, 350) == 0);
+                assert(notificationSoundFrequencyAt(
+                           NotificationSoundPreset::Urgent, 450) == 880);
+                assert(notificationSoundFrequencyAt(
+                           NotificationSoundPreset::Urgent, 700) == 1319);
                 return 0;
             }
             """

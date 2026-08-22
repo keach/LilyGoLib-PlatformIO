@@ -63,7 +63,7 @@ void NotificationSettingsScreen::create(const char *title,
     }
 
     lv_obj_t *sound_button = createButton(
-        "SOUND: CLASSIC", 20, 160, 200, 30, soundSettingsCallback);
+        "SOUND: SUCCESS", 20, 160, 200, 30, soundSettingsCallback);
     sound_button_label_ = lv_obj_get_child(sound_button, 0);
 
     createButton("SAVE", 10, 202, 108, 32, saveCallback);

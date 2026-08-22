@@ -36,7 +36,7 @@ UTC+9).
 | Settings hub | YES |  | The clock-screen `SET` button opens `DATE & TIME`, `POWER & DISPLAY`, `BRIGHTNESS`, grouped `WI-FI & NTP`, and `ABOUT` screens |
 | Restore defaults | YES | YES | Confirmation screen restores brightness, display timeouts, clock format, and automatic time sync defaults immediately and in NVS |
 | Kitchen timer | YES | PARTLY | The original timer flow is device-tested. Issue #56 adds clock-face countdown, 5/10/30/60-minute presets, 0:00–99:59 adjustment and reset, 1000 ms alert vibration, and a persistent per-feature notification mode; these additions await device verification. |
-| Notification sounds | YES |  | Shared `CLASSIC`, `DOUBLE BEEP`, and `ASCENDING` presets, preview, per-feature NVS persistence, and default fallback for kitchen timer, Pomodoro, and scheduled-alarm notification clients |
+| Notification sounds | YES |  | Shared `SUCCESS`, `DOUBLE BEEP`, and `URGENT` presets, preview, per-feature NVS persistence, and default fallback for kitchen timer, Pomodoro, and scheduled-alarm notification clients |
 | Documentation | YES | - | Project-specific English and Japanese README |
 
 Status legend: `YES` = complete, `PARTLY` = partially complete, blank = not yet
@@ -217,7 +217,7 @@ flowchart TD
 - Use `SET` on the clock screen to open the settings hub.
 - Use `APPS` to open the apps hub and enter the kitchen timer without going through settings. The countdown continues in the background and is also shown on the clock face while running or paused. Expiry wakes the watch from Light Sleep and starts the selected end notification until stopped.
 - The kitchen timer supports 5, 10, 30, and 60-minute presets, 10-second, 1-minute, and 10-minute adjustments, and a range of 0:00–99:59. `START` is disabled at 0:00, while `RESET` clears an idle or paused timer to 0:00.
-- `TIMER SETTINGS` stores one of `SOUND + VIBRATION`, `SOUND ONLY`, or `VIBRATION ONLY` in NVS for the kitchen timer. Its sound submenu selects and previews the shared `CLASSIC`, `DOUBLE BEEP`, and `ASCENDING` presets. Preset choices are stored separately for the kitchen timer, planned Pomodoro timer, and scheduled alarm; invalid stored values fall back to `CLASSIC`. Common master volume belongs to [#59](https://github.com/keach/t-watch-s3-custom/issues/59).
+- `TIMER SETTINGS` stores one of `SOUND + VIBRATION`, `SOUND ONLY`, or `VIBRATION ONLY` in NVS for the kitchen timer. Its sound submenu selects and previews the shared `SUCCESS`, `DOUBLE BEEP`, and `URGENT` presets. Preset choices are stored separately for the kitchen timer, planned Pomodoro timer, and scheduled alarm; invalid stored values fall back to `SUCCESS`. Common master volume belongs to [#59](https://github.com/keach/t-watch-s3-custom/issues/59).
 - Select `DATE & TIME`, `POWER & DISPLAY`, `BRIGHTNESS`, `WI-FI & NTP`, or `ABOUT` in
   the hub. The `WI-FI & NTP` submenu opens the existing `WI-FI` and
   `TIME SYNC` screens. `SAVE`, `CANCEL`, and `BACK` return through the
@@ -412,7 +412,7 @@ flowchart TD
 | 設定ハブ | ○ |  | 時計画面の`SET`から`DATE & TIME`、`POWER & DISPLAY`、`BRIGHTNESS`、`WI-FI & NTP`サブメニュー、および`ABOUT`画面を開く構成 |
 | 設定初期化 | ○ | ○ | 確認画面を経て、明るさ・画面時間・時計形式・NTP自動同期を即時およびNVS上で初期値へ戻す |
 | キッチンタイマー | ○ | △ | 従来のタイマー動作は実機確認済み。Issue #56で時計画面への残り時間表示、5/10/30/60分プリセット、0:00〜99:59の調整とリセット、1000 ms Alert振動、機能別通知方式の永続化を追加し、追加部分は実機確認待ち |
-| 通知音プリセット | ○ |  | キッチンタイマー・ポモドーロ・指定時刻アラームから共用できる`CLASSIC`、`DOUBLE BEEP`、`ASCENDING`、試聴、機能別NVS保存、初期値へのフォールバック |
+| 通知音プリセット | ○ |  | キッチンタイマー・ポモドーロ・指定時刻アラームから共用できる`SUCCESS`、`DOUBLE BEEP`、`URGENT`、試聴、機能別NVS保存、初期値へのフォールバック |
 | ドキュメント | ○ | ー | このプロジェクト専用の英語・日本語README |
 
 凡例：`○`＝済、`△`＝一部済、空白＝未対応、`ー`＝対象外。
@@ -592,7 +592,7 @@ flowchart TD
 - 時計画面の`SET`から設定ハブを開きます。
 - `APPS`から設定ハブを経由せずアプリハブを開き、キッチンタイマーへ移動できます。カウントダウンはバックグラウンドでも継続し、実行中または一時停止中は時計画面にも残り時間を表示します。期限到達時はLight Sleepから復帰して、停止するまで選択した方式で通知します。
 - キッチンタイマーは5、10、30、60分のプリセットと、10秒、1分、10分単位の増減に対応し、0:00〜99:59の範囲で設定できます。0:00では`START`を無効化し、待機中または一時停止中の`RESET`で0:00へ戻します。
-- `TIMER SETTINGS`では、キッチンタイマーの通知方式を`SOUND + VIBRATION`、`SOUND ONLY`、`VIBRATION ONLY`から選び、NVSへ保存します。通知音サブ画面では、共通プリセットの`CLASSIC`、`DOUBLE BEEP`、`ASCENDING`を選択・試聴できます。選択値はキッチンタイマー、今後のポモドーロ、指定時刻アラームごとに個別保存し、不正な保存値は`CLASSIC`へフォールバックします。共通マスター音量は[#59](https://github.com/keach/t-watch-s3-custom/issues/59)で扱います。
+- `TIMER SETTINGS`では、キッチンタイマーの通知方式を`SOUND + VIBRATION`、`SOUND ONLY`、`VIBRATION ONLY`から選び、NVSへ保存します。通知音サブ画面では、共通プリセットの`SUCCESS`、`DOUBLE BEEP`、`URGENT`を選択・試聴できます。選択値はキッチンタイマー、今後のポモドーロ、指定時刻アラームごとに個別保存し、不正な保存値は`SUCCESS`へフォールバックします。共通マスター音量は[#59](https://github.com/keach/t-watch-s3-custom/issues/59)で扱います。
 - ハブで`DATE & TIME`、`POWER & DISPLAY`、`BRIGHTNESS`、`WI-FI & NTP`、`ABOUT`の
   いずれかを選択します。`WI-FI & NTP`サブメニューから、既存の`WI-FI`画面と
   `TIME SYNC`画面へ移動します。`SAVE`、`CANCEL`、`BACK`は対応する親画面へ戻り、
