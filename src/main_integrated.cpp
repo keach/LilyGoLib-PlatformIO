@@ -7,23 +7,33 @@
 
 namespace {
 
-constexpr uint32_t kTimerAlertSampleRate = 44100;
-constexpr uint32_t kTimerAlertFrequency = 1000;
-constexpr uint32_t kTimerAlertChunkDurationMs = 20;
-constexpr size_t kTimerAlertFrameCount =
-    kTimerAlertSampleRate * kTimerAlertChunkDurationMs / 1000;
-constexpr size_t kTimerAlertSampleCount = kTimerAlertFrameCount * 2;
-constexpr float kTimerAlertVolume = 0.35F;
-constexpr uint32_t kTimerSpeakerStartupDelayMs = 20;
+constexpr uint32_t kNotificationSampleRate = 44100;
+constexpr uint32_t kNotificationChunkDurationMs = 20;
+constexpr size_t kNotificationFrameCount =
+    kNotificationSampleRate * kNotificationChunkDurationMs / 1000;
+constexpr size_t kNotificationSampleCount = kNotificationFrameCount * 2;
+constexpr float kNotificationVolume = 0.35F;
+constexpr uint32_t kNotificationSpeakerStartupDelayMs = 20;
+constexpr uint32_t kNotificationPreviewDurationMs =
+    kNotificationSoundPatternDurationMs;
 constexpr uint64_t kMinimumTimerWakeupUs = 1000ULL;
 constexpr uint8_t kAlert1000MsEffect = 16;
 
-int16_t timer_alert_samples[kTimerAlertSampleCount];
-bool notification_sound_active = false;
+int16_t notification_audio_samples[kNotificationSampleCount];
+bool end_notification_sound_active = false;
 bool notification_vibration_active = false;
-bool timer_audio_ready = false;
-bool timer_audio_write_failure_reported = false;
-uint32_t timer_speaker_enabled_ms = 0;
+bool notification_preview_active = false;
+bool notification_audio_ready = false;
+bool notification_audio_write_failure_reported = false;
+bool notification_speaker_powered = false;
+uint32_t notification_speaker_enabled_ms = 0;
+uint32_t end_notification_sound_started_ms = 0;
+uint32_t notification_preview_started_ms = 0;
+NotificationSoundPreset end_notification_sound_preset =
+    kDefaultNotificationSoundPreset;
+NotificationSoundPreset notification_preview_preset =
+    kDefaultNotificationSoundPreset;
+float notification_audio_phase = 0.0F;
 lv_obj_t *timer_countdown_clock_label = nullptr;
 KitchenTimerState last_clock_timer_state = KitchenTimerState::Idle;
 uint32_t last_clock_timer_seconds = UINT32_MAX;
@@ -39,37 +49,74 @@ KitchenTimerApp kitchen_timer_app(kBackgroundColor,
                                   kMutedColor,
                                   kButtonColor);
 
-void initializeTimerAlertSamples()
+void fillNotificationAudioSamples(uint16_t frequency_hz)
 {
-    for (size_t frame = 0; frame < kTimerAlertFrameCount; ++frame) {
-        const float phase =
-            2.0F * PI * kTimerAlertFrequency * frame /
-            kTimerAlertSampleRate;
-        const int16_t sample = static_cast<int16_t>(
-            32767.0F * sinf(phase) * kTimerAlertVolume);
-        timer_alert_samples[frame * 2] = sample;
-        timer_alert_samples[frame * 2 + 1] = sample;
+    const float phase_step = frequency_hz == 0
+                                 ? 0.0F
+                                 : 2.0F * PI * frequency_hz /
+                                       kNotificationSampleRate;
+    for (size_t frame = 0; frame < kNotificationFrameCount; ++frame) {
+        const int16_t sample = frequency_hz == 0
+                                   ? 0
+                                   : static_cast<int16_t>(
+                                         32767.0F *
+                                         sinf(notification_audio_phase) *
+                                         kNotificationVolume);
+        notification_audio_samples[frame * 2] = sample;
+        notification_audio_samples[frame * 2 + 1] = sample;
+        notification_audio_phase += phase_step;
+        if (notification_audio_phase >= 2.0F * PI) {
+            notification_audio_phase -= 2.0F * PI;
+        }
     }
 }
 
-bool initializeTimerAudio()
+bool initializeNotificationAudio()
 {
 #if ESP_IDF_VERSION > ESP_IDF_VERSION_VAL(5, 0, 0)
     instance.player.end();
     instance.player.setPins(I2S_BCLK, I2S_WCLK, I2S_DOUT);
-    timer_audio_ready = instance.player.begin(
+    notification_audio_ready = instance.player.begin(
         I2S_MODE_STD,
-        kTimerAlertSampleRate,
+        kNotificationSampleRate,
         I2S_DATA_BIT_WIDTH_16BIT,
         I2S_SLOT_MODE_STEREO);
 #else
-    timer_audio_ready = instance.initAmplifier();
+    notification_audio_ready = instance.initAmplifier();
 #endif
 
-    Serial.printf("Kitchen timer audio: %s (%lu Hz)\n",
-                  timer_audio_ready ? "ready" : "initialization failed",
-                  static_cast<unsigned long>(kTimerAlertSampleRate));
-    return timer_audio_ready;
+    Serial.printf("Notification audio: %s (%lu Hz)\n",
+                  notification_audio_ready ? "ready"
+                                           : "initialization failed",
+                  static_cast<unsigned long>(kNotificationSampleRate));
+    return notification_audio_ready;
+}
+
+bool notificationAudioRequested()
+{
+    return end_notification_sound_active || notification_preview_active;
+}
+
+void updateNotificationSpeakerPower(uint32_t now_ms)
+{
+    if (!notificationAudioRequested()) {
+        if (notification_speaker_powered) {
+            instance.powerControl(POWER_SPEAK, false);
+            notification_speaker_powered = false;
+        }
+        return;
+    }
+
+    if (!notification_audio_ready && !initializeNotificationAudio()) {
+        return;
+    }
+    if (!notification_speaker_powered) {
+        instance.powerControl(POWER_SPEAK, true);
+        notification_speaker_powered = true;
+        notification_speaker_enabled_ms = now_ms;
+        notification_audio_write_failure_reported = false;
+        notification_audio_phase = 0.0F;
+    }
 }
 
 void showClockFromApps(void *)
@@ -108,21 +155,16 @@ void wakeForKitchenTimer(void *)
 
 void setEndNotificationOutput(NotificationOutputState output, void *)
 {
-    if (notification_sound_active != output.sound_active) {
-        notification_sound_active = output.sound_active;
-        if (!notification_sound_active) {
-            instance.powerControl(POWER_SPEAK, false);
-        } else {
-            const uint32_t now_ms = millis();
-            if (!timer_audio_ready) {
-                initializeTimerAudio();
-            }
-            if (timer_audio_ready) {
-                instance.powerControl(POWER_SPEAK, true);
-                timer_speaker_enabled_ms = now_ms;
-                timer_audio_write_failure_reported = false;
-            }
+    const uint32_t now_ms = millis();
+    end_notification_sound_preset = resolveNotificationSoundPreset(
+        static_cast<uint8_t>(output.sound_preset));
+    if (end_notification_sound_active != output.sound_active) {
+        end_notification_sound_active = output.sound_active;
+        if (end_notification_sound_active) {
+            end_notification_sound_started_ms = now_ms;
+            notification_audio_phase = 0.0F;
         }
+        updateNotificationSpeakerPower(now_ms);
     }
 
     if (notification_vibration_active != output.vibration_active) {
@@ -137,23 +179,49 @@ void setEndNotificationOutput(NotificationOutputState output, void *)
     }
 }
 
+void previewNotificationSound(NotificationSoundPreset preset, void *)
+{
+    notification_preview_preset = resolveNotificationSoundPreset(
+        static_cast<uint8_t>(preset));
+    notification_preview_started_ms = millis();
+    notification_preview_active = true;
+    notification_audio_phase = 0.0F;
+    updateNotificationSpeakerPower(notification_preview_started_ms);
+}
+
 void serviceEndNotificationOutput(uint32_t now_ms)
 {
-    if (!notification_sound_active) {
+    if (notification_preview_active &&
+        now_ms - notification_preview_started_ms >=
+            kNotificationPreviewDurationMs) {
+        notification_preview_active = false;
+        updateNotificationSpeakerPower(now_ms);
+    }
+
+    if (!notificationAudioRequested() || !notification_audio_ready ||
+        !notification_speaker_powered ||
+        now_ms - notification_speaker_enabled_ms <
+            kNotificationSpeakerStartupDelayMs) {
         return;
     }
 
-    if (timer_audio_ready &&
-        now_ms - timer_speaker_enabled_ms >= kTimerSpeakerStartupDelayMs) {
-        const size_t bytes_written = instance.player.write(
-            reinterpret_cast<uint8_t *>(timer_alert_samples),
-            sizeof(timer_alert_samples));
-        if (bytes_written == 0 && !timer_audio_write_failure_reported) {
-            timer_audio_write_failure_reported = true;
-            Serial.println("Kitchen timer audio: PCM write failed");
-        }
+    const NotificationSoundPreset preset = end_notification_sound_active
+                                               ? end_notification_sound_preset
+                                               : notification_preview_preset;
+    const uint32_t started_ms = end_notification_sound_active
+                                    ? end_notification_sound_started_ms
+                                    : notification_preview_started_ms;
+    const uint16_t frequency_hz = notificationSoundFrequencyAt(
+        preset, now_ms - started_ms);
+    fillNotificationAudioSamples(frequency_hz);
+    const size_t bytes_written = instance.player.write(
+        reinterpret_cast<uint8_t *>(notification_audio_samples),
+        sizeof(notification_audio_samples));
+    if (bytes_written == 0 &&
+        !notification_audio_write_failure_reported) {
+        notification_audio_write_failure_reported = true;
+        Serial.println("Notification audio: PCM write failed");
     }
-
 }
 
 void createTimerCountdownClockLabel()
@@ -286,8 +354,7 @@ void setup()
 {
     clockApplicationSetup();
 
-    initializeTimerAlertSamples();
-    initializeTimerAudio();
+    initializeNotificationAudio();
     instance.powerControl(POWER_SPEAK, false);
 
     app_hub_screen.create(showKitchenTimer,
@@ -299,6 +366,8 @@ void setup()
                              wakeForKitchenTimer,
                              nullptr,
                              setEndNotificationOutput,
+                             nullptr,
+                             previewNotificationSound,
                              nullptr);
 
     createButton(clock_screen,

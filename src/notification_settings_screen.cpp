@@ -19,11 +19,16 @@ NotificationSettingsScreen::NotificationSettingsScreen(
 void NotificationSettingsScreen::create(const char *title,
                                         SaveCallback save_callback,
                                         void *save_context,
+                                        SoundSettingsCallback
+                                            sound_settings_callback,
+                                        void *sound_settings_context,
                                         BackCallback back_callback,
                                         void *back_context)
 {
     save_callback_ = save_callback;
     save_context_ = save_context;
+    sound_settings_callback_ = sound_settings_callback;
+    sound_settings_context_ = sound_settings_context;
     back_callback_ = back_callback;
     back_context_ = back_context;
 
@@ -37,13 +42,13 @@ void NotificationSettingsScreen::create(const char *title,
     lv_label_set_text(title_label, title);
     lv_obj_set_style_text_font(title_label, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(title_label, lv_color_hex(accent_color_), 0);
-    lv_obj_align(title_label, LV_ALIGN_TOP_MID, 0, 10);
+    lv_obj_align(title_label, LV_ALIGN_TOP_MID, 0, 7);
 
     lv_obj_t *description = lv_label_create(screen_);
     lv_label_set_text(description, "END NOTIFICATION MODE");
     lv_obj_set_style_text_font(description, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(description, lv_color_hex(muted_color_), 0);
-    lv_obj_align(description, LV_ALIGN_TOP_MID, 0, 43);
+    lv_obj_align(description, LV_ALIGN_TOP_MID, 0, 34);
 
     constexpr NotificationMode modes[] = {
         NotificationMode::SoundAndVibration,
@@ -52,21 +57,49 @@ void NotificationSettingsScreen::create(const char *title,
     };
     for (int index = 0; index < 3; ++index) {
         mode_buttons_[index] = createButton(
-            notificationModeLabel(modes[index]), 20, 68 + index * 42,
-            200, 34, modeCallback,
+            notificationModeLabel(modes[index]), 20, 53 + index * 35,
+            200, 29, modeCallback,
             reinterpret_cast<void *>(static_cast<uintptr_t>(modes[index])));
     }
+
+    lv_obj_t *sound_button = createButton(
+        "SOUND: SUCCESS", 20, 160, 200, 30, soundSettingsCallback);
+    sound_button_label_ = lv_obj_get_child(sound_button, 0);
 
     createButton("SAVE", 10, 202, 108, 32, saveCallback);
     createButton("CANCEL", 122, 202, 108, 32, cancelCallback);
     updateSelection();
 }
 
-void NotificationSettingsScreen::show(NotificationMode mode)
+void NotificationSettingsScreen::show(
+    NotificationMode mode, NotificationSoundPreset sound_preset)
 {
     selected_mode_ = mode;
+    selected_sound_preset_ = resolveNotificationSoundPreset(
+        static_cast<uint8_t>(sound_preset));
     updateSelection();
+    updateSoundLabel();
     lv_screen_load_anim(screen_, LV_SCR_LOAD_ANIM_MOVE_LEFT, 180, 0, false);
+}
+
+void NotificationSettingsScreen::showPending()
+{
+    updateSelection();
+    updateSoundLabel();
+    lv_screen_load_anim(screen_, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 180, 0, false);
+}
+
+void NotificationSettingsScreen::updateSoundPreset(
+    NotificationSoundPreset sound_preset)
+{
+    selected_sound_preset_ = resolveNotificationSoundPreset(
+        static_cast<uint8_t>(sound_preset));
+    updateSoundLabel();
+}
+
+NotificationSoundPreset NotificationSettingsScreen::soundPreset() const
+{
+    return selected_sound_preset_;
 }
 
 lv_obj_t *NotificationSettingsScreen::screen() const
@@ -103,6 +136,16 @@ void NotificationSettingsScreen::cancelCallback(lv_event_t *event)
         lv_obj_get_user_data(button));
     if (self != nullptr) {
         self->goBack();
+    }
+}
+
+void NotificationSettingsScreen::soundSettingsCallback(lv_event_t *event)
+{
+    auto *button = lv_event_get_current_target_obj(event);
+    auto *self = static_cast<NotificationSettingsScreen *>(
+        lv_obj_get_user_data(button));
+    if (self != nullptr) {
+        self->showSoundSettings();
     }
 }
 
@@ -152,10 +195,28 @@ void NotificationSettingsScreen::updateSelection()
     }
 }
 
+void NotificationSettingsScreen::updateSoundLabel()
+{
+    if (sound_button_label_ == nullptr) {
+        return;
+    }
+    lv_label_set_text_fmt(
+        sound_button_label_, "SOUND: %s",
+        notificationSoundPresetLabel(selected_sound_preset_));
+}
+
+void NotificationSettingsScreen::showSoundSettings()
+{
+    if (sound_settings_callback_ != nullptr) {
+        sound_settings_callback_(selected_sound_preset_,
+                                 sound_settings_context_);
+    }
+}
+
 void NotificationSettingsScreen::save()
 {
     if (save_callback_ != nullptr) {
-        save_callback_(selected_mode_, save_context_);
+        save_callback_(selected_mode_, selected_sound_preset_, save_context_);
     }
     goBack();
 }

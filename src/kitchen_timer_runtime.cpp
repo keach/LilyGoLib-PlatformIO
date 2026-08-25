@@ -26,7 +26,8 @@ void KitchenTimerRuntime::update(uint32_t now_ms)
     if (current_state == KitchenTimerState::Alerting &&
         previous_state_ != KitchenTimerState::Alerting) {
         notification_.start(NotificationTarget::KitchenTimer,
-                            notification_mode_, now_ms);
+                            notification_mode_, notification_sound_preset_,
+                            now_ms);
         if (wake_callback_ != nullptr) {
             wake_callback_(wake_context_);
         }
@@ -57,6 +58,19 @@ NotificationMode KitchenTimerRuntime::notificationMode() const
     return notification_mode_;
 }
 
+void KitchenTimerRuntime::setNotificationSoundPreset(
+    NotificationSoundPreset preset)
+{
+    notification_sound_preset_ = resolveNotificationSoundPreset(
+        static_cast<uint8_t>(preset));
+    notification_.setSoundPreset(notification_sound_preset_);
+}
+
+NotificationSoundPreset KitchenTimerRuntime::notificationSoundPreset() const
+{
+    return notification_sound_preset_;
+}
+
 bool KitchenTimerRuntime::nextWakeDelayMilliseconds(
     uint32_t now_ms, uint32_t &delay_ms) const
 {
@@ -76,6 +90,7 @@ bool KitchenTimerRuntime::requiresAwake() const
 void KitchenTimerRuntime::setAlertOutput(NotificationOutputState output)
 {
     if (alert_output_.target == output.target &&
+        alert_output_.sound_preset == output.sound_preset &&
         alert_output_.sound_active == output.sound_active &&
         alert_output_.vibration_active == output.vibration_active) {
         return;

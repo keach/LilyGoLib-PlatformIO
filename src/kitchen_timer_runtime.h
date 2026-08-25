@@ -20,6 +20,8 @@ public:
     void update(uint32_t now_ms);
     void setNotificationMode(NotificationMode mode);
     NotificationMode notificationMode() const;
+    void setNotificationSoundPreset(NotificationSoundPreset preset);
+    NotificationSoundPreset notificationSoundPreset() const;
 
     bool nextWakeDelayMilliseconds(uint32_t now_ms,
                                    uint32_t &delay_ms) const;
@@ -36,6 +38,8 @@ private:
     EndNotification notification_;
     NotificationMode notification_mode_ =
         NotificationMode::SoundAndVibration;
+    NotificationSoundPreset notification_sound_preset_ =
+        kDefaultNotificationSoundPreset;
     KitchenTimerState previous_state_ = KitchenTimerState::Idle;
     NotificationOutputState alert_output_;
 };
