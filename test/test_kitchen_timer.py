@@ -20,6 +20,7 @@ class KitchenTimerTest(unittest.TestCase):
             #include <cassert>
             #include "end_notification.h"
             #include "kitchen_timer.h"
+            #include "notification_volume.h"
 
             int main() {
                 KitchenTimer timer;
@@ -115,6 +116,33 @@ class KitchenTimerTest(unittest.TestCase):
                            NotificationSoundPreset::Urgent, 450) == 880);
                 assert(notificationSoundFrequencyAt(
                            NotificationSoundPreset::Urgent, 700) == 1319);
+
+                assert(notificationVolumeLevelCount() == 5);
+                assert(resolveNotificationVolumeLevel(255) ==
+                       kDefaultNotificationVolumeLevel);
+                assert(notificationVolumePercent(
+                           NotificationVolumeLevel::Level1) == 20);
+                assert(notificationVolumePercent(
+                           NotificationVolumeLevel::Level3) == 60);
+                assert(notificationVolumePercent(
+                           NotificationVolumeLevel::Level5) == 100);
+                assert(decreaseNotificationVolumeLevel(
+                           NotificationVolumeLevel::Level1) ==
+                       NotificationVolumeLevel::Level1);
+                assert(increaseNotificationVolumeLevel(
+                           NotificationVolumeLevel::Level3) ==
+                       NotificationVolumeLevel::Level4);
+                assert(increaseNotificationVolumeLevel(
+                           NotificationVolumeLevel::Level5) ==
+                       NotificationVolumeLevel::Level5);
+                assert(notificationVolumeGain(
+                           NotificationVolumeLevel::Level1) <
+                       notificationVolumeGain(
+                           NotificationVolumeLevel::Level3));
+                assert(notificationVolumeGain(
+                           NotificationVolumeLevel::Level3) <
+                       notificationVolumeGain(
+                           NotificationVolumeLevel::Level5));
                 return 0;
             }
             """
@@ -133,6 +161,7 @@ class KitchenTimerTest(unittest.TestCase):
                     str(ROOT / "src" / "kitchen_timer.cpp"),
                     str(ROOT / "src" / "end_notification.cpp"),
                     str(ROOT / "src" / "notification_sound.cpp"),
+                    str(ROOT / "src" / "notification_volume.cpp"),
                     "-o",
                     str(executable),
                 ],

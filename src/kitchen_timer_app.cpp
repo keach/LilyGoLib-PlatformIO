@@ -100,6 +100,11 @@ KitchenTimerState KitchenTimerApp::state() const
     return timer_.state();
 }
 
+NotificationSoundPreset KitchenTimerApp::notificationSoundPreset() const
+{
+    return runtime_.notificationSoundPreset();
+}
+
 uint32_t KitchenTimerApp::remainingSeconds(uint32_t now_ms) const
 {
     return timer_.remainingSeconds(now_ms);
