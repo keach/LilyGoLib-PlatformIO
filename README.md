@@ -36,8 +36,9 @@ UTC+9).
 | Settings hub | YES |  | The clock-screen `SET` button opens `DATE & TIME`, `POWER & DISPLAY`, `BRIGHTNESS`, grouped `WI-FI & NTP`, and `ABOUT` screens |
 | Restore defaults | YES | YES | Confirmation screen restores brightness, display timeouts, clock format, and automatic time sync defaults immediately and in NVS |
 | Kitchen timer | YES | PARTLY | The original timer flow is device-tested. Issue #56 adds clock-face countdown, 5/10/30/60-minute presets, 0:00–99:59 adjustment and reset, 1000 ms alert vibration, and a persistent per-feature notification mode; these additions await device verification. |
+| Pomodoro timer | YES |  | Fixed 25-minute focus and 5-minute break phases, pause/resume/end controls, completed-focus count, background countdown, Light Sleep wake, and per-feature notification settings |
 | Notification sounds | YES | YES | Shared `SUCCESS`, `DOUBLE BEEP`, and `URGENT` presets, preview, per-feature NVS persistence, and default fallback for kitchen timer, Pomodoro, and scheduled-alarm notification clients |
-| Alarm notification volume | YES |  | Five shared volume levels, preview from `APPS`, NVS persistence, and PCM-only scaling that remains independent from future AquesTalk speech volume |
+| Alarm notification volume | YES | YES | Five shared volume levels, preview from `APPS`, NVS persistence, and PCM-only scaling that remains independent from future AquesTalk speech volume |
 | Documentation | YES | - | Project-specific English and Japanese README |
 
 Status legend: `YES` = complete, `PARTLY` = partially complete, blank = not yet
@@ -62,7 +63,8 @@ completed, `-` = not applicable.
 - [x] Kitchen timer with background countdown, Light Sleep wake, sound, and vibration ([#32](https://github.com/keach/t-watch-s3-custom/issues/32))
 - [ ] Kitchen timer enhancements and reusable end-notification foundation ([#56](https://github.com/keach/t-watch-s3-custom/issues/56))
 - [x] Shared notification sound presets and preview ([#57](https://github.com/keach/t-watch-s3-custom/issues/57))
-- [ ] Shared five-level alarm notification volume ([#59](https://github.com/keach/t-watch-s3-custom/issues/59))
+- [x] Shared five-level alarm notification volume ([#59](https://github.com/keach/t-watch-s3-custom/issues/59))
+- [ ] Pomodoro timer with reusable notifications ([#19](https://github.com/keach/t-watch-s3-custom/issues/19))
 - [ ] Japanese font and text-rendering foundation
 
 #### Following milestone: network information
@@ -77,7 +79,7 @@ These are possible extensions and are not yet committed requirements.
 - Japanese UI or selectable display language
 - Selectable timezone instead of fixed JST
 - Scheduled alarm: planned ([#49](https://github.com/keach/t-watch-s3-custom/issues/49))
-- Pomodoro timer: planned ([#19](https://github.com/keach/t-watch-s3-custom/issues/19))
+- Pomodoro timer: implemented; device verification pending ([#19](https://github.com/keach/t-watch-s3-custom/issues/19))
 - Stopwatch: future candidate
 
 ### PlatformIO environments
@@ -200,9 +202,11 @@ flowchart TD
     HUB -- "BACK" --> CLOCK
     CLOCK -- "APPS" --> APPS["Open apps hub"]
     APPS -- "KITCHEN TIMER" --> TIMER["Start or manage countdown"]
+    APPS -- "POMODORO" --> POMO["Run 25-minute focus and 5-minute break phases"]
     APPS -- "ALARM VOLUME" --> AV["Set and preview five volume levels"]
     AV -- "SAVE / CANCEL" --> APPS
     TIMER -- "BACK" --> APPS
+    POMO -- "BACK" --> APPS
     APPS -- "BACK" --> CLOCK
 
     CLOCK -- "Configured timeout reached and DEPLOY MODE is off" --> OFF["Turn display off"]
@@ -215,13 +219,15 @@ flowchart TD
     WAKE -- "Automatic sync timer" --> BG["Run due synchronization with display off"]
     BG --> OFF
     WAKE -- "Kitchen timer" --> ALERT["Wake display and start sound and vibration"]
+    WAKE -- "Pomodoro phase end" --> ALERT
     ALERT -- "STOP" --> CLOCK
 ```
 
 - Use `SET` on the clock screen to open the settings hub.
 - Use `APPS` to open the apps hub and enter the kitchen timer without going through settings. The countdown continues in the background and is also shown on the clock face while running or paused. Expiry wakes the watch from Light Sleep and starts the selected end notification until stopped.
 - The kitchen timer supports 5, 10, 30, and 60-minute presets, 10-second, 1-minute, and 10-minute adjustments, and a range of 0:00–99:59. `START` is disabled at 0:00, while `RESET` clears an idle or paused timer to 0:00.
-- `TIMER SETTINGS` stores one of `SOUND + VIBRATION`, `SOUND ONLY`, or `VIBRATION ONLY` in NVS for the kitchen timer. Its sound submenu selects and previews the shared `SUCCESS`, `DOUBLE BEEP`, and `URGENT` presets. Preset choices are stored separately for the kitchen timer, planned Pomodoro timer, and scheduled alarm; invalid stored values fall back to `SUCCESS`. All notification clients use the common master volume from [#59](https://github.com/keach/t-watch-s3-custom/issues/59).
+- `POMODORO` alternates a fixed 25-minute focus phase with a 5-minute break. It supports pause, resume, end/reset, a completed-focus counter, background clock-face countdown, and Light Sleep wake. After a phase-complete notification, `START BREAK` or `START FOCUS` begins the next phase.
+- `TIMER SETTINGS` and `POMODORO SETTINGS` each store one of `SOUND + VIBRATION`, `SOUND ONLY`, or `VIBRATION ONLY` in NVS. Their sound submenus select and preview the shared `SUCCESS`, `DOUBLE BEEP`, and `URGENT` presets. Preset choices are stored separately for the kitchen timer, Pomodoro timer, and scheduled alarm; invalid stored values fall back to `SUCCESS`. All notification clients use the common master volume from [#59](https://github.com/keach/t-watch-s3-custom/issues/59).
 - `ALARM VOLUME` in `APPS` selects one of five shared levels (20%, 40%, 60%, 80%, or 100%). `PREVIEW` plays the kitchen timer's currently selected preset at the pending level, `SAVE` persists it to NVS, and `CANCEL` leaves the saved value unchanged. The level scales only notification PCM samples, so it does not alter future AquesTalk speech volume.
 - Select `DATE & TIME`, `POWER & DISPLAY`, `BRIGHTNESS`, `WI-FI & NTP`, or `ABOUT` in
   the hub. The `WI-FI & NTP` submenu opens the existing `WI-FI` and
@@ -417,8 +423,9 @@ flowchart TD
 | 設定ハブ | ○ |  | 時計画面の`SET`から`DATE & TIME`、`POWER & DISPLAY`、`BRIGHTNESS`、`WI-FI & NTP`サブメニュー、および`ABOUT`画面を開く構成 |
 | 設定初期化 | ○ | ○ | 確認画面を経て、明るさ・画面時間・時計形式・NTP自動同期を即時およびNVS上で初期値へ戻す |
 | キッチンタイマー | ○ | △ | 従来のタイマー動作は実機確認済み。Issue #56で時計画面への残り時間表示、5/10/30/60分プリセット、0:00〜99:59の調整とリセット、1000 ms Alert振動、機能別通知方式の永続化を追加し、追加部分は実機確認待ち |
+| ポモドーロタイマー | ○ |  | 25分の作業・5分の休憩、一時停止・再開・終了、完了作業数、バックグラウンド表示、Light Sleep復帰、機能別通知設定 |
 | 通知音プリセット | ○ | ○ | キッチンタイマー・ポモドーロ・指定時刻アラームから共用できる`SUCCESS`、`DOUBLE BEEP`、`URGENT`、試聴、機能別NVS保存、初期値へのフォールバック |
-| アラーム通知音量 | ○ |  | `APPS`から選べる共通5段階音量、試聴、NVS永続化、今後のAquesTalk読み上げ音量と分離したPCM専用スケーリング |
+| アラーム通知音量 | ○ | ○ | `APPS`から選べる共通5段階音量、試聴、NVS永続化、今後のAquesTalk読み上げ音量と分離したPCM専用スケーリング |
 | ドキュメント | ○ | ー | このプロジェクト専用の英語・日本語README |
 
 凡例：`○`＝済、`△`＝一部済、空白＝未対応、`ー`＝対象外。
@@ -443,7 +450,8 @@ flowchart TD
 - [x] バックグラウンド動作、Light Sleep復帰、音・バイブレーション通知を備えたキッチンタイマー（[#32](https://github.com/keach/t-watch-s3-custom/issues/32)）
 - [ ] キッチンタイマー追加機能と再利用可能な終了通知基盤（[#56](https://github.com/keach/t-watch-s3-custom/issues/56)）
 - [x] 共通通知音プリセットと試聴（[#57](https://github.com/keach/t-watch-s3-custom/issues/57)）
-- [ ] 共通5段階アラーム通知音量（[#59](https://github.com/keach/t-watch-s3-custom/issues/59)）
+- [x] 共通5段階アラーム通知音量（[#59](https://github.com/keach/t-watch-s3-custom/issues/59)）
+- [ ] 共通通知を利用するポモドーロタイマー（[#19](https://github.com/keach/t-watch-s3-custom/issues/19)）
 - [ ] 日本語フォント・表示基盤
 
 #### 次のマイルストーン：ネットワーク情報
@@ -458,7 +466,7 @@ flowchart TD
 - 日本語UIまたは表示言語の選択
 - JST固定ではなくタイムゾーンを選択する設定
 - 指定時刻アラーム：計画済み（[#49](https://github.com/keach/t-watch-s3-custom/issues/49)）
-- ポモドーロタイマー：計画済み（[#19](https://github.com/keach/t-watch-s3-custom/issues/19)）
+- ポモドーロタイマー：実装済み・実機確認待ち（[#19](https://github.com/keach/t-watch-s3-custom/issues/19)）
 - ストップウォッチ：将来候補
 
 ### PlatformIO環境
@@ -580,9 +588,11 @@ flowchart TD
     HUB -- "BACK" --> CLOCK
     CLOCK -- "APPS" --> APPS["アプリハブを開く"]
     APPS -- "KITCHEN TIMER" --> TIMER["カウントダウンを開始・管理"]
+    APPS -- "POMODORO" --> POMO["25分の作業・5分の休憩を実行"]
     APPS -- "ALARM VOLUME" --> AV["5段階の音量を設定・試聴"]
     AV -- "SAVE / CANCEL" --> APPS
     TIMER -- "BACK" --> APPS
+    POMO -- "BACK" --> APPS
     APPS -- "BACK" --> CLOCK
 
     CLOCK -- "設定時間に到達、かつDEPLOY MODEが無効" --> OFF["画面を消灯"]
@@ -595,13 +605,15 @@ flowchart TD
     WAKE -- "自動同期タイマー" --> BG["画面を点灯せず期限到来済み同期を実行"]
     BG --> OFF
     WAKE -- "キッチンタイマー" --> ALERT["画面を復帰し音・バイブレーションを開始"]
+    WAKE -- "ポモドーロのフェーズ終了" --> ALERT
     ALERT -- "STOP" --> CLOCK
 ```
 
 - 時計画面の`SET`から設定ハブを開きます。
 - `APPS`から設定ハブを経由せずアプリハブを開き、キッチンタイマーへ移動できます。カウントダウンはバックグラウンドでも継続し、実行中または一時停止中は時計画面にも残り時間を表示します。期限到達時はLight Sleepから復帰して、停止するまで選択した方式で通知します。
 - キッチンタイマーは5、10、30、60分のプリセットと、10秒、1分、10分単位の増減に対応し、0:00〜99:59の範囲で設定できます。0:00では`START`を無効化し、待機中または一時停止中の`RESET`で0:00へ戻します。
-- `TIMER SETTINGS`では、キッチンタイマーの通知方式を`SOUND + VIBRATION`、`SOUND ONLY`、`VIBRATION ONLY`から選び、NVSへ保存します。通知音サブ画面では、共通プリセットの`SUCCESS`、`DOUBLE BEEP`、`URGENT`を選択・試聴できます。選択値はキッチンタイマー、今後のポモドーロ、指定時刻アラームごとに個別保存し、不正な保存値は`SUCCESS`へフォールバックします。すべての通知機能は[#59](https://github.com/keach/t-watch-s3-custom/issues/59)の共通マスター音量を利用します。
+- `POMODORO`では、25分の作業と5分の休憩を交互に実行します。一時停止・再開・終了／リセット、完了作業数、時計画面へのバックグラウンド表示、Light Sleepからの復帰に対応し、フェーズ完了後は`START BREAK`または`START FOCUS`で次のフェーズを開始します。
+- `TIMER SETTINGS`と`POMODORO SETTINGS`では、それぞれ通知方式を`SOUND + VIBRATION`、`SOUND ONLY`、`VIBRATION ONLY`から選び、NVSへ保存します。通知音サブ画面では、共通プリセットの`SUCCESS`、`DOUBLE BEEP`、`URGENT`を選択・試聴できます。選択値はキッチンタイマー、ポモドーロ、指定時刻アラームごとに個別保存し、不正な保存値は`SUCCESS`へフォールバックします。すべての通知機能は[#59](https://github.com/keach/t-watch-s3-custom/issues/59)の共通マスター音量を利用します。
 - `APPS`の`ALARM VOLUME`では、共通音量を20%、40%、60%、80%、100%の5段階から選択します。`PREVIEW`はキッチンタイマーで選択中のプリセットを未保存の音量で再生し、`SAVE`はNVSへ保存、`CANCEL`は保存値を変更せず戻ります。通知用PCMだけを調整するため、今後のAquesTalk読み上げ音量には影響しません。
 - ハブで`DATE & TIME`、`POWER & DISPLAY`、`BRIGHTNESS`、`WI-FI & NTP`、`ABOUT`の
   いずれかを選択します。`WI-FI & NTP`サブメニューから、既存の`WI-FI`画面と

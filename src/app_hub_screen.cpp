@@ -15,6 +15,8 @@ AppHubScreen::AppHubScreen(uint32_t background_color,
 
 void AppHubScreen::create(ActionCallback kitchen_timer_callback,
                           void *kitchen_timer_context,
+                          ActionCallback pomodoro_timer_callback,
+                          void *pomodoro_timer_context,
                           ActionCallback alarm_volume_callback,
                           void *alarm_volume_context,
                           ActionCallback back_callback,
@@ -22,6 +24,9 @@ void AppHubScreen::create(ActionCallback kitchen_timer_callback,
 {
     kitchen_timer_binding_ = {
         this, kitchen_timer_callback, kitchen_timer_context,
+    };
+    pomodoro_timer_binding_ = {
+        this, pomodoro_timer_callback, pomodoro_timer_context,
     };
     alarm_volume_binding_ = {
         this, alarm_volume_callback, alarm_volume_context,
@@ -47,16 +52,23 @@ void AppHubScreen::create(ActionCallback kitchen_timer_callback,
 
     createButton("KITCHEN TIMER",
                  20,
-                 76,
+                 62,
                  200,
-                 48,
+                 38,
                  &kitchen_timer_binding_);
+
+    createButton("POMODORO",
+                 20,
+                 108,
+                 200,
+                 38,
+                 &pomodoro_timer_binding_);
 
     createButton("ALARM VOLUME",
                  20,
-                 136,
+                 154,
                  200,
-                 48,
+                 38,
                  &alarm_volume_binding_);
 
     createButton("BACK",
