@@ -6,6 +6,7 @@
 #include "kitchen_timer_app.h"
 #include "notification_settings_store.h"
 #include "notification_volume_screen.h"
+#include "pomodoro_timer_app.h"
 
 namespace {
 
@@ -38,9 +39,25 @@ NotificationVolumeLevel notification_master_volume_level =
     kDefaultNotificationVolumeLevel;
 NotificationVolumeLevel notification_preview_volume_level =
     kDefaultNotificationVolumeLevel;
+NotificationOutputState end_notification_outputs[] = {
+    {NotificationTarget::KitchenTimer, kDefaultNotificationSoundPreset,
+     false, false},
+    {NotificationTarget::PomodoroTimer, kDefaultNotificationSoundPreset,
+     false, false},
+    {NotificationTarget::ScheduledAlarm, kDefaultNotificationSoundPreset,
+     false, false},
+};
 float notification_audio_phase = 0.0F;
 lv_obj_t *timer_countdown_clock_label = nullptr;
-KitchenTimerState last_clock_timer_state = KitchenTimerState::Idle;
+enum class ClockCountdownSource : uint8_t {
+    None,
+    KitchenTimer,
+    PomodoroTimer,
+};
+ClockCountdownSource last_clock_countdown_source =
+    ClockCountdownSource::None;
+uint8_t last_clock_countdown_state = UINT8_MAX;
+PomodoroPhase last_clock_pomodoro_phase = PomodoroPhase::Focus;
 uint32_t last_clock_timer_seconds = UINT32_MAX;
 
 AppHubScreen app_hub_screen(kBackgroundColor,
@@ -53,6 +70,11 @@ KitchenTimerApp kitchen_timer_app(kBackgroundColor,
                                   kAccentColor,
                                   kMutedColor,
                                   kButtonColor);
+PomodoroTimerApp pomodoro_timer_app(kBackgroundColor,
+                                    kPrimaryColor,
+                                    kAccentColor,
+                                    kMutedColor,
+                                    kButtonColor);
 NotificationVolumeScreen notification_volume_screen(kBackgroundColor,
                                                      kPrimaryColor,
                                                      kAccentColor,
@@ -160,6 +182,12 @@ void showKitchenTimer(void *)
     kitchen_timer_app.show();
 }
 
+void showPomodoroTimer(void *)
+{
+    last_activity_ms = millis();
+    pomodoro_timer_app.show();
+}
+
 void showAlarmVolume(void *)
 {
     last_activity_ms = millis();
@@ -180,13 +208,50 @@ void wakeForKitchenTimer(void *)
     last_activity_ms = millis();
 }
 
+void wakeForPomodoroTimer(void *)
+{
+    wakeScreen();
+    last_activity_ms = millis();
+}
+
+size_t notificationOutputIndex(NotificationTarget target)
+{
+    switch (target) {
+    case NotificationTarget::KitchenTimer:
+        return 0;
+    case NotificationTarget::PomodoroTimer:
+        return 1;
+    case NotificationTarget::ScheduledAlarm:
+        return 2;
+    }
+    return 0;
+}
+
 void setEndNotificationOutput(NotificationOutputState output, void *)
 {
+    end_notification_outputs[notificationOutputIndex(output.target)] = output;
+
+    bool sound_active = false;
+    bool vibration_active = false;
+    NotificationSoundPreset sound_preset = kDefaultNotificationSoundPreset;
+    for (const NotificationOutputState &candidate :
+         end_notification_outputs) {
+        if (!sound_active && candidate.sound_active) {
+            sound_preset = candidate.sound_preset;
+        }
+        sound_active = sound_active || candidate.sound_active;
+        vibration_active = vibration_active || candidate.vibration_active;
+    }
+
     const uint32_t now_ms = millis();
-    end_notification_sound_preset = resolveNotificationSoundPreset(
-        static_cast<uint8_t>(output.sound_preset));
-    if (end_notification_sound_active != output.sound_active) {
-        end_notification_sound_active = output.sound_active;
+    const NotificationSoundPreset resolved_preset =
+        resolveNotificationSoundPreset(static_cast<uint8_t>(sound_preset));
+    const bool preset_changed =
+        end_notification_sound_preset != resolved_preset;
+    end_notification_sound_preset = resolved_preset;
+    if (end_notification_sound_active != sound_active ||
+        (sound_active && preset_changed)) {
+        end_notification_sound_active = sound_active;
         if (end_notification_sound_active) {
             end_notification_sound_started_ms = now_ms;
             notification_audio_phase = 0.0F;
@@ -194,8 +259,8 @@ void setEndNotificationOutput(NotificationOutputState output, void *)
         updateNotificationSpeakerPower(now_ms);
     }
 
-    if (notification_vibration_active != output.vibration_active) {
-        notification_vibration_active = output.vibration_active;
+    if (notification_vibration_active != vibration_active) {
+        notification_vibration_active = vibration_active;
         if (notification_vibration_active) {
             instance.drv.setWaveform(0, kAlert1000MsEffect);
             instance.drv.setWaveform(1, 0);
@@ -296,51 +361,86 @@ void createTimerCountdownClockLabel()
 
 void updateTimerCountdownClockLabel(uint32_t now_ms)
 {
-    const KitchenTimerState state = kitchen_timer_app.state();
-    const uint32_t seconds = kitchen_timer_app.remainingSeconds(now_ms);
-    if (state == last_clock_timer_state &&
+    const KitchenTimerState kitchen_state = kitchen_timer_app.state();
+    const PomodoroState pomodoro_state = pomodoro_timer_app.state();
+    ClockCountdownSource source = ClockCountdownSource::None;
+    uint8_t state = 0;
+    PomodoroPhase pomodoro_phase = pomodoro_timer_app.phase();
+    uint32_t seconds = 0;
+
+    if (kitchen_state == KitchenTimerState::Running ||
+        kitchen_state == KitchenTimerState::Paused) {
+        source = ClockCountdownSource::KitchenTimer;
+        state = static_cast<uint8_t>(kitchen_state);
+        seconds = kitchen_timer_app.remainingSeconds(now_ms);
+    } else if (pomodoro_state == PomodoroState::Running ||
+               pomodoro_state == PomodoroState::Paused) {
+        source = ClockCountdownSource::PomodoroTimer;
+        state = static_cast<uint8_t>(pomodoro_state);
+        seconds = pomodoro_timer_app.remainingSeconds(now_ms);
+    }
+
+    if (source == last_clock_countdown_source &&
+        state == last_clock_countdown_state &&
+        pomodoro_phase == last_clock_pomodoro_phase &&
         seconds == last_clock_timer_seconds) {
         return;
     }
-    last_clock_timer_state = state;
+    last_clock_countdown_source = source;
+    last_clock_countdown_state = state;
+    last_clock_pomodoro_phase = pomodoro_phase;
     last_clock_timer_seconds = seconds;
 
-    if (state != KitchenTimerState::Running &&
-        state != KitchenTimerState::Paused) {
+    if (source == ClockCountdownSource::None) {
         lv_obj_add_flag(timer_countdown_clock_label, LV_OBJ_FLAG_HIDDEN);
         return;
     }
 
-    lv_label_set_text_fmt(
-        timer_countdown_clock_label,
-        state == KitchenTimerState::Paused ? "TIMER PAUSED %02lu:%02lu"
-                                           : "TIMER %02lu:%02lu",
-        static_cast<unsigned long>(seconds / 60),
-        static_cast<unsigned long>(seconds % 60));
+    if (source == ClockCountdownSource::KitchenTimer) {
+        lv_label_set_text_fmt(
+            timer_countdown_clock_label,
+            kitchen_state == KitchenTimerState::Paused
+                ? "TIMER PAUSED %02lu:%02lu"
+                : "TIMER %02lu:%02lu",
+            static_cast<unsigned long>(seconds / 60),
+            static_cast<unsigned long>(seconds % 60));
+    } else {
+        const bool paused = pomodoro_state == PomodoroState::Paused;
+        const char *phase = pomodoro_phase == PomodoroPhase::Focus
+                                ? "FOCUS"
+                                : "BREAK";
+        lv_label_set_text_fmt(
+            timer_countdown_clock_label,
+            paused ? "%s PAUSED %02lu:%02lu" : "%s %02lu:%02lu",
+            phase,
+            static_cast<unsigned long>(seconds / 60),
+            static_cast<unsigned long>(seconds % 60));
+    }
     lv_obj_remove_flag(timer_countdown_clock_label, LV_OBJ_FLAG_HIDDEN);
 }
 
-uint64_t combinedTimerWakeupUs(bool &kitchen_timer_wakeup)
+uint64_t combinedTimerWakeupUs()
 {
-    kitchen_timer_wakeup = false;
-
-    const uint64_t automatic_sync_wakeup_us = nextAutomaticSyncWakeupUs();
-    uint32_t kitchen_timer_delay_ms = 0;
-    if (!kitchen_timer_app.nextWakeDelayMilliseconds(
-            millis(), kitchen_timer_delay_ms)) {
-        return automatic_sync_wakeup_us;
+    uint64_t earliest_wakeup_us = nextAutomaticSyncWakeupUs();
+    const uint32_t now_ms = millis();
+    uint32_t delay_ms = 0;
+    if (kitchen_timer_app.nextWakeDelayMilliseconds(now_ms, delay_ms)) {
+        const uint64_t candidate_us =
+            delay_ms == 0 ? kMinimumTimerWakeupUs
+                          : static_cast<uint64_t>(delay_ms) * 1000ULL;
+        if (earliest_wakeup_us == 0 || candidate_us < earliest_wakeup_us) {
+            earliest_wakeup_us = candidate_us;
+        }
     }
-
-    const uint64_t kitchen_timer_wakeup_us =
-        kitchen_timer_delay_ms == 0
-            ? kMinimumTimerWakeupUs
-            : static_cast<uint64_t>(kitchen_timer_delay_ms) * 1000ULL;
-    if (automatic_sync_wakeup_us == 0 ||
-        kitchen_timer_wakeup_us <= automatic_sync_wakeup_us) {
-        kitchen_timer_wakeup = true;
-        return kitchen_timer_wakeup_us;
+    if (pomodoro_timer_app.nextWakeDelayMilliseconds(now_ms, delay_ms)) {
+        const uint64_t candidate_us =
+            delay_ms == 0 ? kMinimumTimerWakeupUs
+                          : static_cast<uint64_t>(delay_ms) * 1000ULL;
+        if (earliest_wakeup_us == 0 || candidate_us < earliest_wakeup_us) {
+            earliest_wakeup_us = candidate_us;
+        }
     }
-    return automatic_sync_wakeup_us;
+    return earliest_wakeup_us;
 }
 
 void enterIntegratedLightSleep()
@@ -354,9 +454,7 @@ void enterIntegratedLightSleep()
         refreshWiFiScreen();
     }
 
-    bool kitchen_timer_wakeup = false;
-    const uint64_t timer_wakeup_us =
-        combinedTimerWakeupUs(kitchen_timer_wakeup);
+    const uint64_t timer_wakeup_us = combinedTimerWakeupUs();
     if (timer_wakeup_us != 0) {
         esp_sleep_enable_timer_wakeup(timer_wakeup_us);
     }
@@ -387,10 +485,15 @@ void enterIntegratedLightSleep()
 
     if (wakeup_cause == ESP_SLEEP_WAKEUP_TIMER) {
         screen_off_ms = millis();
-        kitchen_timer_app.update(millis());
-        if (kitchen_timer_wakeup &&
-            kitchen_timer_app.state() == KitchenTimerState::Alerting) {
+        const uint32_t now_ms = millis();
+        kitchen_timer_app.update(now_ms);
+        pomodoro_timer_app.update(now_ms);
+        if (kitchen_timer_app.state() == KitchenTimerState::Alerting) {
             Serial.println("Light sleep wake: kitchen timer");
+            return;
+        }
+        if (pomodoro_timer_app.state() == PomodoroState::Alerting) {
+            Serial.println("Light sleep wake: pomodoro timer");
             return;
         }
         requestTimeSyncIfDue();
@@ -419,6 +522,8 @@ void setup()
 
     app_hub_screen.create(showKitchenTimer,
                           nullptr,
+                          showPomodoroTimer,
+                          nullptr,
                           showAlarmVolume,
                           nullptr,
                           showClockFromApps,
@@ -431,6 +536,14 @@ void setup()
                              nullptr,
                              previewNotificationSound,
                              nullptr);
+    pomodoro_timer_app.create(showAppsFromTimer,
+                              nullptr,
+                              wakeForPomodoroTimer,
+                              nullptr,
+                              setEndNotificationOutput,
+                              nullptr,
+                              previewNotificationSound,
+                              nullptr);
     notification_volume_screen.create(
         saveNotificationMasterVolume,
         nullptr,
@@ -465,6 +578,7 @@ void loop()
     updateTimeSyncNotification();
     const uint32_t now_ms = millis();
     kitchen_timer_app.update(now_ms);
+    pomodoro_timer_app.update(now_ms);
     updateTimerCountdownClockLabel(now_ms);
     serviceEndNotificationOutput(now_ms);
 
@@ -475,6 +589,7 @@ void loop()
 
     if (!deploy_mode_enabled && !screen_on && !isRadioBusy() &&
         !kitchen_timer_app.requiresAwake() &&
+        !pomodoro_timer_app.requiresAwake() &&
         millis() - screen_off_ms >= light_sleep_delay_seconds * 1000) {
         enterIntegratedLightSleep();
     }
