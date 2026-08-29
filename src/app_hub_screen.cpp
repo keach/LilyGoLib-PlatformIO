@@ -15,11 +15,16 @@ AppHubScreen::AppHubScreen(uint32_t background_color,
 
 void AppHubScreen::create(ActionCallback kitchen_timer_callback,
                           void *kitchen_timer_context,
+                          ActionCallback alarm_volume_callback,
+                          void *alarm_volume_context,
                           ActionCallback back_callback,
                           void *back_context)
 {
     kitchen_timer_binding_ = {
         this, kitchen_timer_callback, kitchen_timer_context,
+    };
+    alarm_volume_binding_ = {
+        this, alarm_volume_callback, alarm_volume_context,
     };
     back_binding_ = {
         this, back_callback, back_context,
@@ -46,6 +51,13 @@ void AppHubScreen::create(ActionCallback kitchen_timer_callback,
                  200,
                  48,
                  &kitchen_timer_binding_);
+
+    createButton("ALARM VOLUME",
+                 20,
+                 136,
+                 200,
+                 48,
+                 &alarm_volume_binding_);
 
     createButton("BACK",
                  20,

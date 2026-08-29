@@ -5,6 +5,7 @@
 namespace {
 
 constexpr const char *kPreferencesNamespace = "notifications";
+constexpr const char *kMasterVolumeKey = "master_volume";
 
 }  // namespace
 
@@ -64,6 +65,35 @@ bool NotificationSettingsStore::saveSoundPreset(
         soundKeyForTarget(target),
         static_cast<uint8_t>(resolveNotificationSoundPreset(
             static_cast<uint8_t>(preset)))) > 0;
+    preferences.end();
+    return saved;
+}
+
+NotificationVolumeLevel NotificationSettingsStore::loadMasterVolume() const
+{
+    Preferences preferences;
+    if (!preferences.begin(kPreferencesNamespace, true)) {
+        return kDefaultNotificationVolumeLevel;
+    }
+
+    const uint8_t stored = preferences.getUChar(
+        kMasterVolumeKey,
+        static_cast<uint8_t>(kDefaultNotificationVolumeLevel));
+    preferences.end();
+    return resolveNotificationVolumeLevel(stored);
+}
+
+bool NotificationSettingsStore::saveMasterVolume(
+    NotificationVolumeLevel level) const
+{
+    Preferences preferences;
+    if (!preferences.begin(kPreferencesNamespace, false)) {
+        return false;
+    }
+    const bool saved = preferences.putUChar(
+        kMasterVolumeKey,
+        static_cast<uint8_t>(resolveNotificationVolumeLevel(
+            static_cast<uint8_t>(level)))) > 0;
     preferences.end();
     return saved;
 }

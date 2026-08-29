@@ -4,6 +4,8 @@
 
 #include "app_hub_screen.h"
 #include "kitchen_timer_app.h"
+#include "notification_settings_store.h"
+#include "notification_volume_screen.h"
 
 namespace {
 
@@ -12,7 +14,6 @@ constexpr uint32_t kNotificationChunkDurationMs = 20;
 constexpr size_t kNotificationFrameCount =
     kNotificationSampleRate * kNotificationChunkDurationMs / 1000;
 constexpr size_t kNotificationSampleCount = kNotificationFrameCount * 2;
-constexpr float kNotificationVolume = 0.35F;
 constexpr uint32_t kNotificationSpeakerStartupDelayMs = 20;
 constexpr uint32_t kNotificationPreviewDurationMs =
     kNotificationSoundPatternDurationMs;
@@ -33,6 +34,10 @@ NotificationSoundPreset end_notification_sound_preset =
     kDefaultNotificationSoundPreset;
 NotificationSoundPreset notification_preview_preset =
     kDefaultNotificationSoundPreset;
+NotificationVolumeLevel notification_master_volume_level =
+    kDefaultNotificationVolumeLevel;
+NotificationVolumeLevel notification_preview_volume_level =
+    kDefaultNotificationVolumeLevel;
 float notification_audio_phase = 0.0F;
 lv_obj_t *timer_countdown_clock_label = nullptr;
 KitchenTimerState last_clock_timer_state = KitchenTimerState::Idle;
@@ -48,9 +53,17 @@ KitchenTimerApp kitchen_timer_app(kBackgroundColor,
                                   kAccentColor,
                                   kMutedColor,
                                   kButtonColor);
+NotificationVolumeScreen notification_volume_screen(kBackgroundColor,
+                                                     kPrimaryColor,
+                                                     kAccentColor,
+                                                     kMutedColor,
+                                                     kButtonColor);
+NotificationSettingsStore notification_settings_store;
 
-void fillNotificationAudioSamples(uint16_t frequency_hz)
+void fillNotificationAudioSamples(uint16_t frequency_hz,
+                                  NotificationVolumeLevel volume_level)
 {
+    const float volume_gain = notificationVolumeGain(volume_level);
     const float phase_step = frequency_hz == 0
                                  ? 0.0F
                                  : 2.0F * PI * frequency_hz /
@@ -61,7 +74,7 @@ void fillNotificationAudioSamples(uint16_t frequency_hz)
                                    : static_cast<int16_t>(
                                          32767.0F *
                                          sinf(notification_audio_phase) *
-                                         kNotificationVolume);
+                                         volume_gain);
         notification_audio_samples[frame * 2] = sample;
         notification_audio_samples[frame * 2 + 1] = sample;
         notification_audio_phase += phase_step;
@@ -147,6 +160,20 @@ void showKitchenTimer(void *)
     kitchen_timer_app.show();
 }
 
+void showAlarmVolume(void *)
+{
+    last_activity_ms = millis();
+    notification_volume_screen.show(
+        notification_master_volume_level,
+        kitchen_timer_app.notificationSoundPreset());
+}
+
+void showAppsFromAlarmVolume(void *)
+{
+    last_activity_ms = millis();
+    app_hub_screen.show(true);
+}
+
 void wakeForKitchenTimer(void *)
 {
     wakeScreen();
@@ -179,14 +206,41 @@ void setEndNotificationOutput(NotificationOutputState output, void *)
     }
 }
 
-void previewNotificationSound(NotificationSoundPreset preset, void *)
+void startNotificationSoundPreview(NotificationSoundPreset preset,
+                                   NotificationVolumeLevel volume_level)
 {
     notification_preview_preset = resolveNotificationSoundPreset(
         static_cast<uint8_t>(preset));
+    notification_preview_volume_level = resolveNotificationVolumeLevel(
+        static_cast<uint8_t>(volume_level));
     notification_preview_started_ms = millis();
     notification_preview_active = true;
     notification_audio_phase = 0.0F;
     updateNotificationSpeakerPower(notification_preview_started_ms);
+}
+
+void previewNotificationSound(NotificationSoundPreset preset, void *)
+{
+    startNotificationSoundPreview(preset,
+                                  notification_master_volume_level);
+}
+
+void previewNotificationSoundAtVolume(
+    NotificationSoundPreset preset,
+    NotificationVolumeLevel volume_level,
+    void *)
+{
+    startNotificationSoundPreview(preset, volume_level);
+}
+
+void saveNotificationMasterVolume(NotificationVolumeLevel level, void *)
+{
+    notification_master_volume_level = resolveNotificationVolumeLevel(
+        static_cast<uint8_t>(level));
+    if (!notification_settings_store.saveMasterVolume(
+            notification_master_volume_level)) {
+        Serial.println("Notification master volume: save failed");
+    }
 }
 
 void serviceEndNotificationOutput(uint32_t now_ms)
@@ -211,9 +265,13 @@ void serviceEndNotificationOutput(uint32_t now_ms)
     const uint32_t started_ms = end_notification_sound_active
                                     ? end_notification_sound_started_ms
                                     : notification_preview_started_ms;
+    const NotificationVolumeLevel volume_level =
+        end_notification_sound_active
+            ? notification_master_volume_level
+            : notification_preview_volume_level;
     const uint16_t frequency_hz = notificationSoundFrequencyAt(
         preset, now_ms - started_ms);
-    fillNotificationAudioSamples(frequency_hz);
+    fillNotificationAudioSamples(frequency_hz, volume_level);
     const size_t bytes_written = instance.player.write(
         reinterpret_cast<uint8_t *>(notification_audio_samples),
         sizeof(notification_audio_samples));
@@ -354,10 +412,14 @@ void setup()
 {
     clockApplicationSetup();
 
+    notification_master_volume_level =
+        notification_settings_store.loadMasterVolume();
     initializeNotificationAudio();
     instance.powerControl(POWER_SPEAK, false);
 
     app_hub_screen.create(showKitchenTimer,
+                          nullptr,
+                          showAlarmVolume,
                           nullptr,
                           showClockFromApps,
                           nullptr);
@@ -369,6 +431,13 @@ void setup()
                              nullptr,
                              previewNotificationSound,
                              nullptr);
+    notification_volume_screen.create(
+        saveNotificationMasterVolume,
+        nullptr,
+        previewNotificationSoundAtVolume,
+        nullptr,
+        showAppsFromAlarmVolume,
+        nullptr);
 
     createButton(clock_screen,
                  "APPS",

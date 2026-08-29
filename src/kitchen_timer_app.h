@@ -39,6 +39,7 @@ public:
                                    uint32_t &delay_ms) const;
     bool requiresAwake() const;
     KitchenTimerState state() const;
+    NotificationSoundPreset notificationSoundPreset() const;
     uint32_t remainingSeconds(uint32_t now_ms) const;
     lv_obj_t *screen() const;
 
