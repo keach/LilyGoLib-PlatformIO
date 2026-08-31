@@ -7,6 +7,7 @@
 #include "notification_settings_store.h"
 #include "notification_volume_screen.h"
 #include "pomodoro_timer_app.h"
+#include "scheduled_alarm_app.h"
 
 namespace {
 
@@ -75,6 +76,11 @@ PomodoroTimerApp pomodoro_timer_app(kBackgroundColor,
                                     kAccentColor,
                                     kMutedColor,
                                     kButtonColor);
+ScheduledAlarmApp scheduled_alarm_app(kBackgroundColor,
+                                      kPrimaryColor,
+                                      kAccentColor,
+                                      kMutedColor,
+                                      kButtonColor);
 NotificationVolumeScreen notification_volume_screen(kBackgroundColor,
                                                      kPrimaryColor,
                                                      kAccentColor,
@@ -188,6 +194,13 @@ void showPomodoroTimer(void *)
     pomodoro_timer_app.show();
 }
 
+void showScheduledAlarm(void *)
+{
+    last_activity_ms = millis();
+    scheduled_alarm_app.setUse24HourClock(use_24_hour_clock);
+    scheduled_alarm_app.show();
+}
+
 void showAlarmVolume(void *)
 {
     last_activity_ms = millis();
@@ -209,6 +222,12 @@ void wakeForKitchenTimer(void *)
 }
 
 void wakeForPomodoroTimer(void *)
+{
+    wakeScreen();
+    last_activity_ms = millis();
+}
+
+void wakeForScheduledAlarm(void *)
 {
     wakeScreen();
     last_activity_ms = millis();
@@ -440,6 +459,17 @@ uint64_t combinedTimerWakeupUs()
             earliest_wakeup_us = candidate_us;
         }
     }
+    uint32_t delay_seconds = 0;
+    if (scheduled_alarm_app.nextWakeDelaySeconds(time(nullptr),
+                                                 delay_seconds)) {
+        const uint64_t candidate_us =
+            delay_seconds == 0
+                ? kMinimumTimerWakeupUs
+                : static_cast<uint64_t>(delay_seconds) * 1000000ULL;
+        if (earliest_wakeup_us == 0 || candidate_us < earliest_wakeup_us) {
+            earliest_wakeup_us = candidate_us;
+        }
+    }
     return earliest_wakeup_us;
 }
 
@@ -488,12 +518,17 @@ void enterIntegratedLightSleep()
         const uint32_t now_ms = millis();
         kitchen_timer_app.update(now_ms);
         pomodoro_timer_app.update(now_ms);
+        scheduled_alarm_app.update(time(nullptr), now_ms);
         if (kitchen_timer_app.state() == KitchenTimerState::Alerting) {
             Serial.println("Light sleep wake: kitchen timer");
             return;
         }
         if (pomodoro_timer_app.state() == PomodoroState::Alerting) {
             Serial.println("Light sleep wake: pomodoro timer");
+            return;
+        }
+        if (scheduled_alarm_app.alerting()) {
+            Serial.println("Light sleep wake: scheduled alarm");
             return;
         }
         requestTimeSyncIfDue();
@@ -524,6 +559,8 @@ void setup()
                           nullptr,
                           showPomodoroTimer,
                           nullptr,
+                          showScheduledAlarm,
+                          nullptr,
                           showAlarmVolume,
                           nullptr,
                           showClockFromApps,
@@ -544,6 +581,15 @@ void setup()
                               nullptr,
                               previewNotificationSound,
                               nullptr);
+    scheduled_alarm_app.create(showAppsFromTimer,
+                               nullptr,
+                               wakeForScheduledAlarm,
+                               nullptr,
+                               setEndNotificationOutput,
+                               nullptr,
+                               previewNotificationSound,
+                               nullptr);
+    scheduled_alarm_app.setUse24HourClock(use_24_hour_clock);
     notification_volume_screen.create(
         saveNotificationMasterVolume,
         nullptr,
@@ -579,6 +625,8 @@ void loop()
     const uint32_t now_ms = millis();
     kitchen_timer_app.update(now_ms);
     pomodoro_timer_app.update(now_ms);
+    scheduled_alarm_app.setUse24HourClock(use_24_hour_clock);
+    scheduled_alarm_app.update(time(nullptr), now_ms);
     updateTimerCountdownClockLabel(now_ms);
     serviceEndNotificationOutput(now_ms);
 
@@ -590,6 +638,7 @@ void loop()
     if (!deploy_mode_enabled && !screen_on && !isRadioBusy() &&
         !kitchen_timer_app.requiresAwake() &&
         !pomodoro_timer_app.requiresAwake() &&
+        !scheduled_alarm_app.requiresAwake() &&
         millis() - screen_off_ms >= light_sleep_delay_seconds * 1000) {
         enterIntegratedLightSleep();
     }
