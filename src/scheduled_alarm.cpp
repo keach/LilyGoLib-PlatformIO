@@ -88,6 +88,19 @@ bool ScheduledAlarm::setEnabled(bool enabled, time_t now_epoch)
     return true;
 }
 
+bool ScheduledAlarm::reschedule(time_t now_epoch)
+{
+    if (!enabled_) {
+        return true;
+    }
+    const time_t trigger = nextScheduledAlarmEpoch(now_epoch, hour_, minute_);
+    if (trigger == 0) {
+        return false;
+    }
+    trigger_epoch_ = trigger;
+    return true;
+}
+
 void ScheduledAlarm::stopAlert()
 {
     alerting_ = false;

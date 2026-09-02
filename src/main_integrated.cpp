@@ -233,6 +233,11 @@ void wakeForScheduledAlarm(void *)
     last_activity_ms = millis();
 }
 
+void rescheduleAlarmAfterClockAdjustment(time_t now_epoch, void *)
+{
+    scheduled_alarm_app.handleClockAdjusted(now_epoch);
+}
+
 size_t notificationOutputIndex(NotificationTarget target)
 {
     switch (target) {
@@ -590,6 +595,7 @@ void setup()
                                previewNotificationSound,
                                nullptr);
     scheduled_alarm_app.setUse24HourClock(use_24_hour_clock);
+    setClockAdjustedCallback(rescheduleAlarmAfterClockAdjustment, nullptr);
     notification_volume_screen.create(
         saveNotificationMasterVolume,
         nullptr,

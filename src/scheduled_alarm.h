@@ -13,6 +13,7 @@ public:
     bool restore(uint8_t hour, uint8_t minute, bool enabled,
                  time_t trigger_epoch);
     bool setEnabled(bool enabled, time_t now_epoch);
+    bool reschedule(time_t now_epoch);
     void stopAlert();
     void update(time_t now_epoch);
 

@@ -64,6 +64,24 @@ void ScheduledAlarmApp::update(time_t now_epoch, uint32_t now_ms)
     }
 }
 
+void ScheduledAlarmApp::handleClockAdjusted(time_t now_epoch)
+{
+    if (!alarm_.enabled()) {
+        return;
+    }
+    if (!alarm_.reschedule(now_epoch)) {
+        Serial.println("Scheduled alarm: reschedule failed");
+        return;
+    }
+    if (!store_.save(alarm_)) {
+        Serial.println("Scheduled alarm: reschedule save failed");
+    }
+    if (lv_screen_active() == screen_.screen()) {
+        screen_.refresh(use_24_hour_clock_);
+    }
+    Serial.println("Scheduled alarm: rescheduled after clock adjustment");
+}
+
 void ScheduledAlarmApp::setUse24HourClock(bool use_24_hour_clock)
 {
     use_24_hour_clock_ = use_24_hour_clock;

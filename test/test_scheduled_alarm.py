@@ -71,6 +71,23 @@ class ScheduledAlarmTest(unittest.TestCase):
                 assert(alarm.setEnabled(false, evening));
                 assert(!alarm.enabled());
 
+                ScheduledAlarm adjusted;
+                assert(adjusted.configure(morning, 7, 0, true));
+                assert(adjusted.triggerEpoch() ==
+                       epoch(2026, 9, 1, 7, 0, 0));
+                const time_t clock_moved_back =
+                    epoch(2026, 8, 31, 6, 30, 0);
+                assert(adjusted.reschedule(clock_moved_back));
+                assert(adjusted.triggerEpoch() ==
+                       epoch(2026, 8, 31, 7, 0, 0));
+                const time_t clock_moved_forward =
+                    epoch(2026, 9, 2, 8, 0, 0);
+                assert(adjusted.reschedule(clock_moved_forward));
+                assert(adjusted.triggerEpoch() ==
+                       epoch(2026, 9, 3, 7, 0, 0));
+                assert(adjusted.enabled());
+                assert(!adjusted.alerting());
+
                 ScheduledAlarm restored;
                 assert(restored.restore(7, 0, true,
                                         epoch(2026, 9, 2, 7, 0, 0)));

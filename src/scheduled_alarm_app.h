@@ -30,6 +30,7 @@ public:
                 void *preview_sound_context);
     void show();
     void update(time_t now_epoch, uint32_t now_ms);
+    void handleClockAdjusted(time_t now_epoch);
     void setUse24HourClock(bool use_24_hour_clock);
     bool nextWakeDelaySeconds(time_t now_epoch, uint32_t &delay_seconds) const;
     bool requiresAwake() const;
