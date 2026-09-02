@@ -190,6 +190,10 @@ bool time_sync_owns_wifi_connection = false;
 bool power_off_in_progress = false;
 bool tilt_wake_available = false;
 
+using ClockAdjustedCallback = void (*)(time_t now_epoch, void *context);
+ClockAdjustedCallback clock_adjusted_callback = nullptr;
+void *clock_adjusted_context = nullptr;
+
 void syncClockFromRtc();
 void updateBatteryStatus(lv_timer_t *);
 void requestTimeSyncIfDue();
@@ -202,6 +206,19 @@ void refreshPowerDisplayScreen();
 void refreshTimeoutSettingsScreen();
 void updateClock(lv_timer_t *);
 uint64_t nextAutomaticSyncWakeupUs();
+
+void setClockAdjustedCallback(ClockAdjustedCallback callback, void *context)
+{
+    clock_adjusted_callback = callback;
+    clock_adjusted_context = context;
+}
+
+void notifyClockAdjusted()
+{
+    if (clock_adjusted_callback != nullptr) {
+        clock_adjusted_callback(time(nullptr), clock_adjusted_context);
+    }
+}
 
 bool isValidDateTime(const struct tm &timeinfo)
 {
@@ -1191,6 +1208,7 @@ void completeNtpSync()
     saveTimeSyncSettings();
     stopTimeSyncRadio();
     syncClockFromRtc();
+    notifyClockAdjusted();
     refreshTimeSyncScreen();
     setTimeSyncStatus("TIME SYNCED", kAccentColor,
                       kSuccessNotificationMs);
@@ -1709,6 +1727,7 @@ void saveDateTimeCallback(lv_event_t *)
     instance.rtc.setDateTime(setting_year, setting_month, setting_day,
                              setting_hour, setting_minute, setting_second);
     instance.rtc.hwClockRead();
+    notifyClockAdjusted();
     Serial.printf("RTC set to %04d-%02d-%02d %02d:%02d:%02d\n",
                   setting_year, setting_month, setting_day,
                   setting_hour, setting_minute, setting_second);
