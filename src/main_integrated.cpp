@@ -520,6 +520,12 @@ void enterIntegratedLightSleep()
 
     if (wakeup_cause == ESP_SLEEP_WAKEUP_TIMER) {
         screen_off_ms = millis();
+        // The ESP32 system clock and the external RTC can drift apart during
+        // a long Light Sleep. Refresh the system clock before checking an
+        // absolute wall-clock alarm so it cannot fire ahead of the time shown
+        // by the watch. updateClock() remains suppressed while screen_on is
+        // false, so this does not turn on or redraw the display.
+        syncClockFromRtc();
         const uint32_t now_ms = millis();
         kitchen_timer_app.update(now_ms);
         pomodoro_timer_app.update(now_ms);
