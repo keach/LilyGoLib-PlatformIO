@@ -189,6 +189,24 @@ class ScheduledAlarmTest(unittest.TestCase):
                 assert(!runtime.requiresAwake());
                 assert(!last_output.sound_active);
                 assert(!last_output.vibration_active);
+
+                // Simulate a Light Sleep wake where the ESP32 clock has
+                // reached 07:00:03 while the external RTC still reads
+                // 06:59:57. The runtime must be evaluated with the refreshed
+                // RTC time and wait for the wall-clock deadline.
+                ScheduledAlarm drifted_alarm;
+                assert(drifted_alarm.configure(epoch(6, 30, 0),
+                                               7, 0, true));
+                ScheduledAlarmRuntime drifted_runtime(drifted_alarm);
+                const time_t stale_system_time = epoch(7, 0, 3);
+                const time_t refreshed_rtc_time = epoch(6, 59, 57);
+                assert(stale_system_time > drifted_alarm.triggerEpoch());
+                drifted_runtime.update(refreshed_rtc_time, 3000);
+                assert(!drifted_alarm.alerting());
+                assert(drifted_alarm.secondsUntilTrigger(
+                           refreshed_rtc_time) == 3);
+                drifted_runtime.update(epoch(7, 0, 0), 6000);
+                assert(drifted_alarm.alerting());
                 return 0;
             }
             """
