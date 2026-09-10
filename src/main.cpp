@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <time.h>
 
+#include "clock_date_formatter.h"
 #include "firmware_version.h"
 #include "wifi_credentials_types.h"
 
@@ -61,10 +62,6 @@ const char *const kTimeZone = "JST-9";
 const char *const kNtpServer1 = "pool.ntp.org";
 const char *const kNtpServer2 = "time.google.com";
 const char *const kNtpServer3 = "ntp.nict.jp";
-
-const char *const kWeekdays[] = {
-    "SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT",
-};
 
 enum class SettingField : uint8_t {
     Year,
@@ -577,9 +574,9 @@ void updateClock(lv_timer_t *)
     lv_label_set_text_fmt(hour_label, "%02d", display_hour);
     lv_label_set_text_fmt(minute_label, "%02d", timeinfo.tm_min);
     lv_label_set_text_fmt(second_label, "%02d", timeinfo.tm_sec);
-    lv_label_set_text_fmt(date_line_label, "%04d.%02d.%02d. %s",
-                          timeinfo.tm_year + 1900, timeinfo.tm_mon + 1,
-                          timeinfo.tm_mday, kWeekdays[timeinfo.tm_wday]);
+    char date_text[32];
+    formatJapaneseClockDate(date_text, sizeof(date_text), timeinfo);
+    lv_label_set_text(date_line_label, date_text);
 }
 
 const char *batterySymbol(int percent)
@@ -1893,7 +1890,8 @@ void createClockScreen()
     lv_obj_add_flag(meridiem_label, LV_OBJ_FLAG_HIDDEN);
 
     date_line_label = lv_label_create(clock_screen);
-    lv_obj_set_style_text_font(date_line_label, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(date_line_label,
+                               &lv_font_source_han_sans_sc_16_cjk, 0);
     lv_obj_set_style_text_color(date_line_label, lv_color_hex(kAccentColor), 0);
     lv_obj_align(date_line_label, LV_ALIGN_CENTER, 0, 34);
 
