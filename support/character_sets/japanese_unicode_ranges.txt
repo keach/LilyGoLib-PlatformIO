@@ -1,0 +1,17 @@
+# ASCII
+0020-007E
+
+# CJK Symbols and Punctuation
+3000-303F
+
+# Hiragana
+3040-309F
+
+# Katakana
+30A0-30FF
+
+# Halfwidth and Fullwidth Forms through fullwidth white parenthesis
+FF01-FF60
+
+# Fullwidth currency and mathematical symbols
+FFE0-FFE6
