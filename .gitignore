@@ -1,4 +1,5 @@
 .pio
+support/.font-cache/
 .vscode
 __pycache__/
 build

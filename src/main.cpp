@@ -13,6 +13,7 @@
 
 #include "clock_date_formatter.h"
 #include "firmware_version.h"
+#include "japanese_font.h"
 #include "wifi_credentials_types.h"
 
 LV_FONT_DECLARE(lv_font_watch_digits_36);
@@ -1890,8 +1891,7 @@ void createClockScreen()
     lv_obj_add_flag(meridiem_label, LV_OBJ_FLAG_HIDDEN);
 
     date_line_label = lv_label_create(clock_screen);
-    lv_obj_set_style_text_font(date_line_label,
-                               &lv_font_source_han_sans_sc_16_cjk, 0);
+    lv_obj_set_style_text_font(date_line_label, japaneseFont16(), 0);
     lv_obj_set_style_text_color(date_line_label, lv_color_hex(kAccentColor), 0);
     lv_obj_align(date_line_label, LV_ALIGN_CENTER, 0, 34);
 
