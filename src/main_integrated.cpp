@@ -309,7 +309,9 @@ void requestWeatherRefresh(bool manual)
         requestWiFiReconnect();
         if (!isWiFiConnectionBusy()) {
             weather_owns_wifi = false;
-            refreshWeatherScreen(WeatherScreenState::Error, "WI-FI FAILED");
+            refreshWeatherScreen(
+                WeatherScreenState::Error,
+                weatherFetchErrorText(WeatherFetchError::WiFi));
             return;
         }
         weather_controller_state = WeatherControllerState::Connecting;
@@ -335,7 +337,9 @@ void processWeather()
         } else if (!isWiFiConnectionBusy() &&
                    wifi_connection_result == WiFiConnectionResult::Failed) {
             finishWeatherRequest();
-            refreshWeatherScreen(WeatherScreenState::Error, "WI-FI FAILED");
+            refreshWeatherScreen(
+                WeatherScreenState::Error,
+                weatherFetchErrorText(WeatherFetchError::WiFi));
         }
     }
     WeatherFetchResult result;

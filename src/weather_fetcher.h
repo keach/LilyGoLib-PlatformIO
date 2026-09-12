@@ -5,15 +5,19 @@
 enum class WeatherFetchError : uint8_t {
     None,
     InvalidConfiguration,
-    CurrentRequest,
+    WiFi,
+    Transport,
+    Http,
+    Authentication,
+    Json,
     CurrentResponse,
-    ForecastRequest,
     ForecastResponse,
 };
 
 struct WeatherFetchResult {
     bool success = false;
     WeatherFetchError error = WeatherFetchError::None;
+    int16_t http_status = 0;
     WeatherSnapshot snapshot = {};
 };
 
