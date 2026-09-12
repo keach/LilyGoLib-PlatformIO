@@ -38,18 +38,16 @@ void WeatherScreen::create(ActionCallback refresh_callback,
     lv_label_set_text(title, "WEATHER");
     location_label_ = createLabel(screen_, japaneseFont16(), primary_color_,
                                   30, 220);
-    updated_label_ = createLabel(screen_, &lv_font_montserrat_12,
-                                 muted_color_, 51, 220);
     current_label_ = createLabel(screen_, japaneseFont16(), primary_color_,
                                  73, 220);
-    details_label_ = createLabel(screen_, japaneseFont16(), muted_color_,
-                                 97, 220);
     today_label_ = createLabel(screen_, japaneseFont16(), primary_color_,
-                               122, 108);
-    lv_obj_align(today_label_, LV_ALIGN_TOP_LEFT, 6, 122);
+                               106, 108);
+    lv_obj_align(today_label_, LV_ALIGN_TOP_LEFT, 6, 106);
+    lv_obj_set_style_text_line_space(today_label_, -12, 0);
     tomorrow_label_ = createLabel(screen_, japaneseFont16(), primary_color_,
-                                  122, 108);
-    lv_obj_align(tomorrow_label_, LV_ALIGN_TOP_RIGHT, -6, 122);
+                                  106, 108);
+    lv_obj_align(tomorrow_label_, LV_ALIGN_TOP_RIGHT, -6, 106);
+    lv_obj_set_style_text_line_space(tomorrow_label_, -12, 0);
     status_label_ = createLabel(screen_, &lv_font_montserrat_12,
                                 accent_color_, 177, 220);
     createButton("REFRESH", 10, 108, &refresh_binding_);
@@ -120,35 +118,53 @@ void WeatherScreen::update(const WeatherSnapshot &snapshot,
 {
     lv_label_set_text(location_label_,
                       location_name != nullptr ? location_name : "");
+    char updated_text[24] = "NOT UPDATED";
     if (snapshot.valid) {
         struct tm updated = {};
         localtime_r(&snapshot.updated_epoch, &updated);
-        lv_label_set_text_fmt(updated_label_, "UPDATED %02d:%02d",
-                              updated.tm_hour, updated.tm_min);
-        lv_label_set_text_fmt(current_label_, "%s  %d℃",
+        snprintf(updated_text, sizeof(updated_text), "UPDATED %02d:%02d",
+                 updated.tm_hour, updated.tm_min);
+        lv_label_set_text_fmt(current_label_, "%s  %d℃  湿度 %u%%",
             weatherConditionJapanese(snapshot.current_condition_id),
-            roundedTemperature(snapshot.current_temperature_tenths));
-        lv_label_set_text_fmt(details_label_, "体感 %d℃  湿度 %u%%",
-            roundedTemperature(snapshot.feels_like_temperature_tenths),
+            roundedTemperature(snapshot.current_temperature_tenths),
             static_cast<unsigned>(snapshot.humidity_percent));
         updateDay(today_label_, "今日", snapshot.today);
         updateDay(tomorrow_label_, "明日", snapshot.tomorrow);
     } else {
-        lv_label_set_text(updated_label_, "NOT UPDATED");
         lv_label_set_text(current_label_, "天気を取得してください");
-        lv_label_set_text(details_label_, "");
         lv_label_set_text(today_label_, "今日  --");
         lv_label_set_text(tomorrow_label_, "明日  --");
     }
-    const char *state_text = "";
+    const char *state_text = updated_text;
+    bool show_status = false;
     switch (state) {
-    case WeatherScreenState::Updating: state_text = "UPDATING..."; break;
-    case WeatherScreenState::Stale: state_text = "STALE - REFRESH"; break;
-    case WeatherScreenState::Unavailable: state_text = "NO WEATHER DATA"; break;
-    case WeatherScreenState::Error: state_text = status_text != nullptr ? status_text : "UPDATE FAILED"; break;
-    default: state_text = status_text != nullptr ? status_text : ""; break;
+    case WeatherScreenState::Updating:
+        state_text = "UPDATING...";
+        show_status = true;
+        break;
+    case WeatherScreenState::Stale:
+        state_text = "STALE - REFRESH";
+        show_status = true;
+        break;
+    case WeatherScreenState::Unavailable:
+        state_text = "NO WEATHER DATA";
+        show_status = true;
+        break;
+    case WeatherScreenState::Error:
+        state_text = status_text != nullptr ? status_text : "UPDATE FAILED";
+        show_status = true;
+        break;
+    default:
+        if (status_text != nullptr && status_text[0] != '\0') {
+            state_text = status_text;
+            show_status = true;
+        }
+        break;
     }
     lv_label_set_text(status_label_, state_text);
+    lv_obj_set_style_text_color(
+        status_label_,
+        lv_color_hex(show_status ? accent_color_ : muted_color_), 0);
 }
 
 lv_obj_t *WeatherScreen::screen() const { return screen_; }

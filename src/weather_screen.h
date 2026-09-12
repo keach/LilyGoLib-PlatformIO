@@ -45,9 +45,7 @@ private:
     uint32_t button_color_;
     lv_obj_t *screen_ = nullptr;
     lv_obj_t *location_label_ = nullptr;
-    lv_obj_t *updated_label_ = nullptr;
     lv_obj_t *current_label_ = nullptr;
-    lv_obj_t *details_label_ = nullptr;
     lv_obj_t *today_label_ = nullptr;
     lv_obj_t *tomorrow_label_ = nullptr;
     lv_obj_t *status_label_ = nullptr;
