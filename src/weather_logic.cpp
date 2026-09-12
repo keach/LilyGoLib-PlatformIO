@@ -115,6 +115,32 @@ bool aggregateWeatherForecast(const WeatherForecastPoint *points,
     return today.valid || tomorrow.valid;
 }
 
+int8_t weatherForecastDayOffset(time_t forecast_epoch,
+                                time_t current_epoch,
+                                int32_t timezone_offset_seconds)
+{
+    if (forecast_epoch <= 0 || current_epoch <= 0) return INT8_MIN;
+    const int64_t current_day = floorDivision(
+        static_cast<int64_t>(current_epoch) + timezone_offset_seconds,
+        kSecondsPerDay);
+    const int64_t forecast_day = floorDivision(
+        static_cast<int64_t>(forecast_epoch) + timezone_offset_seconds,
+        kSecondsPerDay);
+    const int64_t offset = forecast_day - current_day;
+    return offset < INT8_MIN || offset > INT8_MAX
+               ? INT8_MIN
+               : static_cast<int8_t>(offset);
+}
+
+void invalidateIncompleteWeatherDays(bool today_complete,
+                                     bool tomorrow_complete,
+                                     DailyWeather &today,
+                                     DailyWeather &tomorrow)
+{
+    if (!today_complete) today = {};
+    if (!tomorrow_complete) tomorrow = {};
+}
+
 bool weatherRefreshDue(const WeatherSnapshot &snapshot, time_t now)
 {
     return !snapshot.valid || snapshot.updated_epoch <= 0 ||

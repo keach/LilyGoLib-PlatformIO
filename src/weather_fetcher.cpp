@@ -88,25 +88,23 @@ bool validConditionId(int value)
     return value >= 100 && value <= 999;
 }
 
-bool parseForecastPoint(JsonObjectConst point, WeatherForecastPoint &output)
+bool parseForecastPoint(JsonObjectConst point, time_t epoch,
+                        WeatherForecastPoint &output)
 {
-    const JsonVariantConst epoch_value = point["dt"];
     const JsonVariantConst minimum_value = point["main"]["temp_min"];
     const JsonVariantConst maximum_value = point["main"]["temp_max"];
     const JsonVariantConst precipitation_value = point["pop"];
     const JsonVariantConst condition_value = point["weather"][0]["id"];
-    if (!epoch_value.is<time_t>() || !minimum_value.is<double>() ||
-        !maximum_value.is<double>() || !precipitation_value.is<double>() ||
-        !condition_value.is<int>()) {
+    if (!minimum_value.is<double>() || !maximum_value.is<double>() ||
+        !precipitation_value.is<double>() || !condition_value.is<int>()) {
         return false;
     }
-    const time_t epoch = epoch_value.as<time_t>();
     const double minimum = minimum_value.as<double>();
     const double maximum = maximum_value.as<double>();
     const double precipitation = precipitation_value.as<double>();
     const int condition_id = condition_value.as<int>();
-    if (epoch <= 0 || !validTemperature(minimum) ||
-        !validTemperature(maximum) || minimum > maximum ||
+    if (!validTemperature(minimum) || !validTemperature(maximum) ||
+        minimum > maximum ||
         !isfinite(precipitation) || precipitation < 0.0 ||
         precipitation > 1.0 || !validConditionId(condition_id)) {
         return false;
@@ -210,19 +208,33 @@ WeatherFetchResult fetchOpenWeather(const char *api_key,
     }
     WeatherForecastPoint points[kMaximumForecastPoints] = {};
     size_t point_count = 0;
+    bool today_complete = true;
+    bool tomorrow_complete = true;
     for (JsonObjectConst point : list) {
-        if (point_count >= kMaximumForecastPoints) break;
+        const JsonVariantConst epoch_value = point["dt"];
+        if (!epoch_value.is<time_t>() || epoch_value.as<time_t>() <= 0) {
+            result.error = WeatherFetchError::ForecastResponse;
+            return result;
+        }
+        const time_t epoch = epoch_value.as<time_t>();
+        const int8_t day_offset = weatherForecastDayOffset(
+            epoch, snapshot.current_epoch, snapshot.timezone_offset_seconds);
+        if (day_offset != 0 && day_offset != 1) continue;
         WeatherForecastPoint parsed;
-        if (parseForecastPoint(point, parsed)) {
+        if (!parseForecastPoint(point, epoch, parsed)) {
+            if (day_offset == 0) today_complete = false;
+            if (day_offset == 1) tomorrow_complete = false;
+            continue;
+        }
+        if (point_count < kMaximumForecastPoints) {
             points[point_count++] = parsed;
         }
     }
-    if (!aggregateWeatherForecast(points, point_count, snapshot.current_epoch,
-                                  snapshot.timezone_offset_seconds,
-                                  snapshot.today, snapshot.tomorrow)) {
-        result.error = WeatherFetchError::ForecastResponse;
-        return result;
-    }
+    aggregateWeatherForecast(points, point_count, snapshot.current_epoch,
+                             snapshot.timezone_offset_seconds,
+                             snapshot.today, snapshot.tomorrow);
+    invalidateIncompleteWeatherDays(today_complete, tomorrow_complete,
+                                    snapshot.today, snapshot.tomorrow);
     snapshot.valid = true;
     result.success = true;
     result.snapshot = snapshot;

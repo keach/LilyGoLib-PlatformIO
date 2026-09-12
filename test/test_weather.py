@@ -51,6 +51,21 @@ class WeatherLogicTest(unittest.TestCase):
                 assert(tomorrow.maximum_precipitation_percent == 80);
                 assert(tomorrow.condition_id == 802);
 
+                assert(weatherForecastDayOffset(now + 3 * 3600, now,
+                                                9 * 3600) == 0);
+                assert(weatherForecastDayOffset(now + 27 * 3600, now,
+                                                9 * 3600) == 1);
+                assert(weatherForecastDayOffset(0, now, 9 * 3600) == INT8_MIN);
+
+                // A required-field failure in one slot invalidates the whole
+                // affected day so a plausible but incomplete high/low/POP is
+                // never presented as a complete daily forecast.
+                invalidateIncompleteWeatherDays(false, true, today, tomorrow);
+                assert(!today.valid);
+                assert(tomorrow.valid);
+                invalidateIncompleteWeatherDays(true, false, today, tomorrow);
+                assert(!tomorrow.valid);
+
                 WeatherSnapshot snapshot;
                 assert(weatherRefreshDue(snapshot, now));
                 assert(weatherCacheStale(snapshot, now));

@@ -40,6 +40,12 @@ bool aggregateWeatherForecast(const WeatherForecastPoint *points,
                               int32_t timezone_offset_seconds,
                               DailyWeather &today,
                               DailyWeather &tomorrow);
+int8_t weatherForecastDayOffset(time_t forecast_epoch,
+                                time_t current_epoch,
+                                int32_t timezone_offset_seconds);
+void invalidateIncompleteWeatherDays(bool today_complete,
+                                     bool tomorrow_complete,
+                                     DailyWeather &today,
+                                     DailyWeather &tomorrow);
 bool weatherRefreshDue(const WeatherSnapshot &snapshot, time_t now);
 bool weatherCacheStale(const WeatherSnapshot &snapshot, time_t now);
-
