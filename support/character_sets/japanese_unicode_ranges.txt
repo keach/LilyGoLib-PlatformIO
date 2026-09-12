@@ -15,3 +15,6 @@ FF01-FF60
 
 # Fullwidth currency and mathematical symbols
 FFE0-FFE6
+
+# Degree Celsius
+2103

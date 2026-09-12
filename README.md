@@ -32,6 +32,7 @@ UTC+9).
 | Wrist wake | YES | YES | BMA423 tilt detection wakes the display during both the screen-off delay and Light Sleep while preserving touch, crown, and timer wake sources |
 | Battery status | YES | YES | Compact always-visible upper-left battery, charging, USB-power, and low-battery state |
 | Wi-Fi and NTP | YES | YES | Wi-Fi status, reconnect/disconnect controls, multiple fixed networks, persistent automatic synchronization, manual `SYNC NOW`, RTC update, and ownership-aware radio shutdown |
+| Weather | YES |  | Cached OpenWeather conditions and today/tomorrow forecasts, clock-face high/low temperatures, manual refresh, and ownership-aware Wi-Fi use |
 | Brightness setting | YES | YES | Separate live-preview screen with `SAVE`/`CANCEL` and NVS persistence |
 | Settings hub | YES |  | The clock-screen `SET` button opens `DATE & TIME`, `POWER & DISPLAY`, `BRIGHTNESS`, grouped `WI-FI & NTP`, and `ABOUT` screens |
 | Restore defaults | YES | YES | Confirmation screen restores brightness, display timeouts, clock format, and automatic time sync defaults immediately and in NVS |
@@ -67,11 +68,11 @@ completed, `-` = not applicable.
 - [x] Shared five-level alarm notification volume ([#59](https://github.com/keach/t-watch-s3-custom/issues/59))
 - [ ] Pomodoro timer with reusable notifications ([#19](https://github.com/keach/t-watch-s3-custom/issues/19))
 - [ ] Single-shot scheduled alarm with reusable notifications ([#49](https://github.com/keach/t-watch-s3-custom/issues/49))
-- [ ] Japanese font and text-rendering foundation
+- [x] Japanese font and text-rendering foundation
 
 #### Following milestone: network information
 
-- [ ] Weather forecast API integration and display
+- [ ] OpenWeather current conditions and today/tomorrow forecast ([#10](https://github.com/keach/t-watch-s3-custom/issues/10))
 - [ ] Gotify background notifications and pop-up display
 
 #### Later candidates
@@ -191,6 +192,26 @@ absent, the firmware still builds and operates with Wi-Fi/NTP disabled.
 The ESP32-S3 supports 2.4 GHz Wi-Fi only. Configure a 2.4 GHz network or a
 dual-band SSID that is also available on 2.4 GHz; a 5 GHz-only SSID cannot be
 used.
+
+### Weather configuration
+
+Copy `include/weather_config.example.h` to the ignored
+`include/weather_config.h`, then set the OpenWeather API key, display name,
+latitude, and longitude. Without this file the firmware still builds, and the
+weather screen reports `CHECK CONFIG` without attempting a connection.
+
+```cpp
+inline constexpr WeatherConfig kWeatherConfig = {
+    "YOUR_OPENWEATHER_API_KEY", "TOKYO", "35.6812", "139.7671",
+};
+```
+
+Tap the weather row below the date to open the detail screen. Cached data is
+shown immediately and refreshed automatically after 12 hours. Manual refresh
+has a 10-minute cooldown; data older than 24 hours is replaced by an update
+prompt on the clock. Wi-Fi started only for weather is disconnected afterward,
+while a manually established connection is preserved. API keys and request
+URLs are never logged.
 
 ### Build
 
@@ -470,6 +491,7 @@ flowchart TD
 | 手首動作での画面復帰 | ○ | ○ | BMA423の傾き検知により、画面消灯後の待機中とLight Sleep中の両方で画面を復帰。タッチ・竜頭・タイマーによる復帰も維持 |
 | バッテリー状態 | ○ | ○ | 左上に常時表示する簡潔な残量、充電、USB給電、低残量表示 |
 | Wi-Fi・NTP | ○ | ○ | Wi-Fi状態、再接続・切断操作、複数固定ネットワーク、自動同期の永続化、手動`SYNC NOW`、RTC更新、接続元に応じたWi-Fi停止 |
+| 天気 | ○ |  | OpenWeatherの現在天気・今日明日予報のキャッシュ、時計画面の最高・最低気温、手動更新、接続元に応じたWi-Fi停止 |
 | 明るさ設定 | ○ | ○ | 即時プレビュー、`SAVE`/`CANCEL`、NVS永続化を備えた独立画面 |
 | 設定ハブ | ○ |  | 時計画面の`SET`から`DATE & TIME`、`POWER & DISPLAY`、`BRIGHTNESS`、`WI-FI & NTP`サブメニュー、および`ABOUT`画面を開く構成 |
 | 設定初期化 | ○ | ○ | 確認画面を経て、明るさ・画面時間・時計形式・NTP自動同期を即時およびNVS上で初期値へ戻す |
@@ -509,7 +531,7 @@ flowchart TD
 
 #### 次のマイルストーン：ネットワーク情報
 
-- [ ] 天気予報APIからの取得と画面表示
+- [ ] OpenWeatherの現在天気・今日明日予報 ([#10](https://github.com/keach/t-watch-s3-custom/issues/10))
 - [ ] Gotifyのバックグラウンド通知とポップアップ表示
 
 #### 将来の候補
@@ -624,6 +646,25 @@ inline constexpr WiFiCredential kWiFiCredentials[] = {
 
 ESP32-S3が対応するWi-Fiは2.4 GHz帯のみです。2.4 GHzのネットワーク、または
 2.4 GHzでも提供される共通SSIDを設定してください。5 GHz専用SSIDには接続できません。
+
+### 天気設定
+
+`include/weather_config.example.h`を、Git管理外の
+`include/weather_config.h`へコピーし、OpenWeatherのAPIキー、画面表示用の地点名、
+緯度、経度を設定します。このファイルがなくてもビルドでき、その場合は通信せず
+天気画面に`CHECK CONFIG`と表示します。
+
+```cpp
+inline constexpr WeatherConfig kWeatherConfig = {
+    "YOUR_OPENWEATHER_API_KEY", "TOKYO", "35.6812", "139.7671",
+};
+```
+
+時計の日付下にある天気欄をタップすると詳細画面を開きます。保存済みデータをすぐ
+表示し、前回の取得成功から12時間以上経過している場合だけ自動更新します。手動更新
+には10分のクールダウンがあり、24時間を超えたデータは時計画面で更新案内に置き換え
+ます。天気取得のためだけに開始したWi-Fiは取得後に切断し、Wi-Fi画面から手動接続した
+通信は維持します。APIキーとリクエストURLはログへ出力しません。
 
 ### ビルド
 

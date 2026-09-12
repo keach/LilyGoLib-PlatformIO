@@ -4,4 +4,5 @@ support/.font-cache/
 __pycache__/
 build
 include/wifi_credentials.h
+include/weather_config.h
 src/generated_clock_main.inc

@@ -198,6 +198,7 @@ void requestTimeSyncIfDue();
 bool isTimeSyncBusy();
 bool isWiFiConnectionBusy();
 bool isRadioBusy();
+bool application_radio_busy = false;
 void refreshTimeSyncScreen();
 void refreshWiFiScreen();
 void refreshPowerDisplayScreen();
@@ -681,7 +682,13 @@ bool isWiFiConnectionBusy()
 
 bool isRadioBusy()
 {
-    return isTimeSyncBusy() || isWiFiConnectionBusy();
+    return isTimeSyncBusy() || isWiFiConnectionBusy() ||
+           application_radio_busy;
+}
+
+void setApplicationRadioBusy(bool busy)
+{
+    application_radio_busy = busy;
 }
 
 bool isNtpSyncDue()
