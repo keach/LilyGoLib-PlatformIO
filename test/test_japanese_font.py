@@ -11,6 +11,7 @@ SAMPLES = (
     "今日の天気は晴れ、降水確率は20％です。",
     "午前10時から定例会議",
     "新宿駅で待ち合わせ",
+    "晴れ  最高28℃  最低20℃",
 )
 
 
@@ -36,7 +37,7 @@ class JapaneseFontTest(unittest.TestCase):
 
     def test_requested_set_contains_representative_ui_text(self):
         characters = set(requested_characters())
-        self.assertEqual(len(characters), 3419)
+        self.assertEqual(len(characters), 3420)
         for sample in SAMPLES:
             with self.subTest(sample=sample):
                 self.assertTrue(set(sample) <= characters)

@@ -1,6 +1,7 @@
 #include "generated_clock_main.inc"
 
 #include <math.h>
+#include <string.h>
 
 #include "app_hub_screen.h"
 #include "kitchen_timer_app.h"
@@ -8,6 +9,17 @@
 #include "notification_volume_screen.h"
 #include "pomodoro_timer_app.h"
 #include "scheduled_alarm_app.h"
+#include "weather_fetcher.h"
+#include "weather_screen.h"
+#include "weather_store.h"
+#include "weather_config_types.h"
+
+#if __has_include("weather_config.h")
+#include "weather_config.h"
+#else
+inline constexpr WeatherConfig kWeatherConfig = {nullptr, "WEATHER", nullptr,
+                                                  nullptr};
+#endif
 
 namespace {
 
@@ -21,6 +33,7 @@ constexpr uint32_t kNotificationPreviewDurationMs =
     kNotificationSoundPatternDurationMs;
 constexpr uint64_t kMinimumTimerWakeupUs = 1000ULL;
 constexpr uint8_t kAlert1000MsEffect = 16;
+constexpr uint32_t kWeatherManualCooldownMs = 10 * 60 * 1000;
 
 int16_t notification_audio_samples[kNotificationSampleCount];
 bool end_notification_sound_active = false;
@@ -50,6 +63,18 @@ NotificationOutputState end_notification_outputs[] = {
 };
 float notification_audio_phase = 0.0F;
 lv_obj_t *timer_countdown_clock_label = nullptr;
+lv_obj_t *weather_clock_button = nullptr;
+lv_obj_t *weather_clock_label = nullptr;
+WeatherSnapshot weather_snapshot = {};
+WeatherStore weather_store;
+WeatherScreen weather_screen(kBackgroundColor, kPrimaryColor, kAccentColor,
+                             kMutedColor, kButtonColor);
+enum class WeatherControllerState : uint8_t {
+    Idle, Connecting, Fetching,
+};
+WeatherControllerState weather_controller_state = WeatherControllerState::Idle;
+QueueHandle_t weather_result_queue = nullptr;
+bool weather_owns_wifi = false;
 enum class ClockCountdownSource : uint8_t {
     None,
     KitchenTimer,
@@ -169,6 +194,181 @@ void showClockFromApps(void *)
                         0,
                         false);
 }
+
+bool weatherConfigurationAvailable()
+{
+    return kWeatherConfig.api_key != nullptr &&
+           kWeatherConfig.latitude != nullptr &&
+           kWeatherConfig.longitude != nullptr &&
+           kWeatherConfig.api_key[0] != '\0' &&
+           strncmp(kWeatherConfig.api_key, "YOUR_", 5) != 0;
+}
+
+void updateClockWeatherLabel()
+{
+    if (weather_clock_label == nullptr) return;
+    const bool countdown_visible = timer_countdown_clock_label != nullptr &&
+        !lv_obj_has_flag(timer_countdown_clock_label, LV_OBJ_FLAG_HIDDEN);
+    if (countdown_visible) {
+        lv_obj_add_flag(weather_clock_button, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+    lv_obj_remove_flag(weather_clock_button, LV_OBJ_FLAG_HIDDEN);
+    if (weatherCacheStale(weather_snapshot, time(nullptr))) {
+        lv_label_set_text(weather_clock_label,
+                          weather_snapshot.valid ? "天気を更新" : "天気を取得");
+        return;
+    }
+    if (!weather_snapshot.today.valid) {
+        lv_label_set_text(weather_clock_label, "今日の予報なし");
+        return;
+    }
+    lv_label_set_text_fmt(
+        weather_clock_label, "%s  最高%d℃  最低%d℃",
+        weatherConditionJapanese(weather_snapshot.today.condition_id),
+        weather_snapshot.today.maximum_temperature_tenths >= 0
+            ? (weather_snapshot.today.maximum_temperature_tenths + 5) / 10
+            : (weather_snapshot.today.maximum_temperature_tenths - 5) / 10,
+        weather_snapshot.today.minimum_temperature_tenths >= 0
+            ? (weather_snapshot.today.minimum_temperature_tenths + 5) / 10
+            : (weather_snapshot.today.minimum_temperature_tenths - 5) / 10);
+}
+
+WeatherScreenState currentWeatherScreenState()
+{
+    if (weather_controller_state != WeatherControllerState::Idle)
+        return WeatherScreenState::Updating;
+    if (!weather_snapshot.valid) return WeatherScreenState::Unavailable;
+    return weatherCacheStale(weather_snapshot, time(nullptr))
+               ? WeatherScreenState::Stale
+               : WeatherScreenState::Ready;
+}
+
+void refreshWeatherScreen(WeatherScreenState state,
+                          const char *status = nullptr)
+{
+    weather_screen.update(weather_snapshot, state,
+                          kWeatherConfig.location_name, status);
+    updateClockWeatherLabel();
+}
+
+void finishWeatherRequest()
+{
+    if (weather_owns_wifi) {
+        WiFi.disconnect(true, false);
+        wifi_connection_result = WiFiConnectionResult::Unknown;
+        refreshWiFiScreen();
+        refreshTimeSyncScreen();
+    }
+    weather_owns_wifi = false;
+    weather_controller_state = WeatherControllerState::Idle;
+    setApplicationRadioBusy(false);
+}
+
+void weatherFetchTask(void *)
+{
+    const WeatherFetchResult result = fetchOpenWeather(
+        kWeatherConfig.api_key, kWeatherConfig.latitude,
+        kWeatherConfig.longitude, time(nullptr));
+    xQueueSend(weather_result_queue, &result, portMAX_DELAY);
+    vTaskDelete(nullptr);
+}
+
+void startWeatherFetch()
+{
+    weather_controller_state = WeatherControllerState::Fetching;
+    if (xTaskCreate(weatherFetchTask, "weather-fetch", 12288, nullptr, 1,
+                    nullptr) != pdPASS) {
+        finishWeatherRequest();
+        refreshWeatherScreen(WeatherScreenState::Error, "TASK START FAILED");
+    }
+}
+
+void requestWeatherRefresh(bool manual)
+{
+    if (weather_controller_state != WeatherControllerState::Idle ||
+        isRadioBusy()) return;
+    if (!weatherConfigurationAvailable()) {
+        refreshWeatherScreen(WeatherScreenState::Error, "CHECK CONFIG");
+        return;
+    }
+    if (weather_result_queue == nullptr) {
+        refreshWeatherScreen(WeatherScreenState::Error, "WEATHER UNAVAILABLE");
+        return;
+    }
+    const time_t now = time(nullptr);
+    if (manual && weather_snapshot.valid &&
+        now >= weather_snapshot.updated_epoch &&
+        now - weather_snapshot.updated_epoch <
+            kWeatherManualCooldownMs / 1000) {
+        refreshWeatherScreen(WeatherScreenState::Error, "WAIT 10 MINUTES");
+        return;
+    }
+    weather_owns_wifi = WiFi.status() != WL_CONNECTED;
+    if (weather_owns_wifi) {
+        requestWiFiReconnect();
+        if (!isWiFiConnectionBusy()) {
+            weather_owns_wifi = false;
+            refreshWeatherScreen(WeatherScreenState::Error, "WI-FI FAILED");
+            return;
+        }
+        weather_controller_state = WeatherControllerState::Connecting;
+        setApplicationRadioBusy(true);
+    } else {
+        setApplicationRadioBusy(true);
+        startWeatherFetch();
+    }
+    refreshWeatherScreen(WeatherScreenState::Updating);
+}
+
+void processWeather()
+{
+    static uint32_t next_clock_refresh_ms = 0;
+    const uint32_t now_ms = millis();
+    if (static_cast<int32_t>(now_ms - next_clock_refresh_ms) >= 0) {
+        next_clock_refresh_ms = now_ms + 60 * 1000;
+        updateClockWeatherLabel();
+    }
+    if (weather_controller_state == WeatherControllerState::Connecting) {
+        if (WiFi.status() == WL_CONNECTED && !isWiFiConnectionBusy()) {
+            startWeatherFetch();
+        } else if (!isWiFiConnectionBusy() &&
+                   wifi_connection_result == WiFiConnectionResult::Failed) {
+            finishWeatherRequest();
+            refreshWeatherScreen(WeatherScreenState::Error, "WI-FI FAILED");
+        }
+    }
+    WeatherFetchResult result;
+    if (weather_result_queue != nullptr &&
+        xQueueReceive(weather_result_queue, &result, 0) == pdTRUE) {
+        finishWeatherRequest();
+        if (result.success) {
+            weather_snapshot = result.snapshot;
+            weather_store.save(weather_snapshot);
+            refreshWeatherScreen(WeatherScreenState::Ready, "UPDATED");
+        } else {
+            refreshWeatherScreen(WeatherScreenState::Error,
+                                 weatherFetchErrorText(result.error));
+        }
+    }
+}
+
+void showWeather(void *)
+{
+    last_activity_ms = millis();
+    refreshWeatherScreen(currentWeatherScreenState());
+    weather_screen.show();
+    if (weatherRefreshDue(weather_snapshot, time(nullptr)))
+        requestWeatherRefresh(false);
+}
+
+void showWeatherFromClock(lv_event_t *) { showWeather(nullptr); }
+void refreshWeather(void *)
+{
+    last_activity_ms = millis();
+    requestWeatherRefresh(true);
+}
+void showClockFromWeather(void *) { showClockFromApps(nullptr); }
 
 void showAppsFromClock(lv_event_t *)
 {
@@ -373,6 +573,25 @@ void serviceEndNotificationOutput(uint32_t now_ms)
 
 void createTimerCountdownClockLabel()
 {
+    weather_clock_button = lv_button_create(clock_screen);
+    lv_obj_set_pos(weather_clock_button, 20, 157);
+    lv_obj_set_size(weather_clock_button, 200, 32);
+    lv_obj_set_style_bg_opa(weather_clock_button, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(weather_clock_button, 0, 0);
+    lv_obj_set_style_shadow_width(weather_clock_button, 0, 0);
+    lv_obj_set_style_pad_all(weather_clock_button, 0, 0);
+    lv_obj_add_event_cb(weather_clock_button, markUserActivity,
+                        LV_EVENT_PRESSED, nullptr);
+    lv_obj_add_event_cb(weather_clock_button, showWeatherFromClock,
+                        LV_EVENT_CLICKED, nullptr);
+    weather_clock_label = lv_label_create(weather_clock_button);
+    lv_obj_set_width(weather_clock_label, 200);
+    lv_obj_set_style_text_align(weather_clock_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(weather_clock_label, japaneseFont16(), 0);
+    lv_obj_set_style_text_color(weather_clock_label,
+                                lv_color_hex(kAccentColor), 0);
+    lv_obj_center(weather_clock_label);
+
     timer_countdown_clock_label = lv_label_create(clock_screen);
     lv_label_set_text(timer_countdown_clock_label, "");
     lv_obj_set_style_text_font(timer_countdown_clock_label,
@@ -417,6 +636,7 @@ void updateTimerCountdownClockLabel(uint32_t now_ms)
 
     if (source == ClockCountdownSource::None) {
         lv_obj_add_flag(timer_countdown_clock_label, LV_OBJ_FLAG_HIDDEN);
+        updateClockWeatherLabel();
         return;
     }
 
@@ -441,6 +661,7 @@ void updateTimerCountdownClockLabel(uint32_t now_ms)
             static_cast<unsigned long>(seconds % 60));
     }
     lv_obj_remove_flag(timer_countdown_clock_label, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(weather_clock_button, LV_OBJ_FLAG_HIDDEN);
 }
 
 uint64_t combinedTimerWakeupUs()
@@ -561,6 +782,9 @@ void setup()
 {
     clockApplicationSetup();
 
+    weather_result_queue = xQueueCreate(1, sizeof(WeatherFetchResult));
+    weather_store.load(weather_snapshot);
+
     notification_master_volume_level =
         notification_settings_store.loadMasterVolume();
     initializeNotificationAudio();
@@ -609,6 +833,8 @@ void setup()
         nullptr,
         showAppsFromAlarmVolume,
         nullptr);
+    weather_screen.create(refreshWeather, nullptr,
+                          showClockFromWeather, nullptr);
 
     createButton(clock_screen,
                  "APPS",
@@ -618,6 +844,7 @@ void setup()
                  30,
                  showAppsFromClock);
     createTimerCountdownClockLabel();
+    updateClockWeatherLabel();
     lv_refr_now(nullptr);
 }
 
@@ -633,6 +860,7 @@ void loop()
 
     processWiFiConnection();
     processTimeSync();
+    processWeather();
     updateTimeSyncNotification();
     const uint32_t now_ms = millis();
     kitchen_timer_app.update(now_ms);
