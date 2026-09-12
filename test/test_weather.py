@@ -56,6 +56,11 @@ class WeatherLogicTest(unittest.TestCase):
                 assert(weatherForecastDayOffset(now + 27 * 3600, now,
                                                 9 * 3600) == 1);
                 assert(weatherForecastDayOffset(0, now, 9 * 3600) == INT8_MIN);
+                assert(!weatherForecastSlotIncluded(now - 1, now, 0));
+                assert(weatherForecastSlotIncluded(now, now, 0));
+                assert(weatherForecastSlotIncluded(now + 3600, now, 0));
+                assert(weatherForecastSlotIncluded(now + 15 * 3600, now, 1));
+                assert(!weatherForecastSlotIncluded(now + 27 * 3600, now, 2));
 
                 // A required-field failure in one slot invalidates the whole
                 // affected day so a plausible but incomplete high/low/POP is

@@ -43,6 +43,9 @@ bool aggregateWeatherForecast(const WeatherForecastPoint *points,
 int8_t weatherForecastDayOffset(time_t forecast_epoch,
                                 time_t current_epoch,
                                 int32_t timezone_offset_seconds);
+bool weatherForecastSlotIncluded(time_t forecast_epoch,
+                                 time_t current_epoch,
+                                 int8_t day_offset);
 void invalidateIncompleteWeatherDays(bool today_complete,
                                      bool tomorrow_complete,
                                      DailyWeather &today,

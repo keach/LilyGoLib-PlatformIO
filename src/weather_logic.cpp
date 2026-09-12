@@ -132,6 +132,14 @@ int8_t weatherForecastDayOffset(time_t forecast_epoch,
                : static_cast<int8_t>(offset);
 }
 
+bool weatherForecastSlotIncluded(time_t forecast_epoch,
+                                 time_t current_epoch,
+                                 int8_t day_offset)
+{
+    if (day_offset == 1) return true;
+    return day_offset == 0 && forecast_epoch >= current_epoch;
+}
+
 void invalidateIncompleteWeatherDays(bool today_complete,
                                      bool tomorrow_complete,
                                      DailyWeather &today,

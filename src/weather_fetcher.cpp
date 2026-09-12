@@ -219,7 +219,10 @@ WeatherFetchResult fetchOpenWeather(const char *api_key,
         const time_t epoch = epoch_value.as<time_t>();
         const int8_t day_offset = weatherForecastDayOffset(
             epoch, snapshot.current_epoch, snapshot.timezone_offset_seconds);
-        if (day_offset != 0 && day_offset != 1) continue;
+        if (!weatherForecastSlotIncluded(epoch, snapshot.current_epoch,
+                                         day_offset)) {
+            continue;
+        }
         WeatherForecastPoint parsed;
         if (!parseForecastPoint(point, epoch, parsed)) {
             if (day_offset == 0) today_complete = false;
