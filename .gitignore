@@ -5,4 +5,5 @@ __pycache__/
 build
 include/wifi_credentials.h
 include/weather_config.h
+include/gotify_config.h
 src/generated_clock_main.inc

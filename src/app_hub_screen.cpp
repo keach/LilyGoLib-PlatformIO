@@ -21,6 +21,8 @@ void AppHubScreen::create(ActionCallback kitchen_timer_callback,
                           void *scheduled_alarm_context,
                           ActionCallback alarm_volume_callback,
                           void *alarm_volume_context,
+                          ActionCallback gotify_callback,
+                          void *gotify_context,
                           ActionCallback back_callback,
                           void *back_context)
 {
@@ -36,6 +38,7 @@ void AppHubScreen::create(ActionCallback kitchen_timer_callback,
     alarm_volume_binding_ = {
         this, alarm_volume_callback, alarm_volume_context,
     };
+    gotify_binding_ = {this, gotify_callback, gotify_context};
     back_binding_ = {
         this, back_callback, back_context,
     };
@@ -57,31 +60,38 @@ void AppHubScreen::create(ActionCallback kitchen_timer_callback,
 
     createButton("KITCHEN TIMER",
                  20,
-                 54,
+                 50,
                  200,
-                 31,
+                 27,
                  &kitchen_timer_binding_);
 
     createButton("POMODORO",
                  20,
-                 90,
+                 80,
                  200,
-                 31,
+                 27,
                  &pomodoro_timer_binding_);
 
     createButton("ALARM",
                  20,
-                 126,
+                 110,
                  200,
-                 31,
+                 27,
                  &scheduled_alarm_binding_);
 
     createButton("ALARM VOLUME",
                  20,
-                 162,
+                 140,
                  200,
-                 31,
+                 27,
                  &alarm_volume_binding_);
+
+    createButton("GOTIFY",
+                 20,
+                 170,
+                 200,
+                 27,
+                 &gotify_binding_);
 
     createButton("BACK",
                  20,

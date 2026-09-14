@@ -33,6 +33,7 @@ UTC+9).
 | Battery status | YES | YES | Compact always-visible upper-left battery, charging, USB-power, and low-battery state |
 | Wi-Fi and NTP | YES | YES | Wi-Fi status, reconnect/disconnect controls, multiple fixed networks, persistent automatic synchronization, manual `SYNC NOW`, RTC update, and ownership-aware radio shutdown |
 | Weather | YES |  | Cached OpenWeather conditions and today/tomorrow forecasts, clock-face high/low temperatures, manual refresh, and ownership-aware Wi-Fi use |
+| Gotify notifications | YES |  | Power-aware REST checks while awake, manual checking, persistent message cursor, Japanese pop-up, and shared sound/vibration settings |
 | Brightness setting | YES | YES | Separate live-preview screen with `SAVE`/`CANCEL` and NVS persistence |
 | Settings hub | YES |  | The clock-screen `SET` button opens `DATE & TIME`, `POWER & DISPLAY`, `BRIGHTNESS`, grouped `WI-FI & NTP`, and `ABOUT` screens |
 | Restore defaults | YES | YES | Confirmation screen restores brightness, display timeouts, clock format, and automatic time sync defaults immediately and in NVS |
@@ -72,8 +73,8 @@ completed, `-` = not applicable.
 
 #### Following milestone: network information
 
-- [ ] OpenWeather current conditions and today/tomorrow forecast ([#10](https://github.com/keach/t-watch-s3-custom/issues/10))
-- [ ] Gotify background notifications and pop-up display
+- [x] OpenWeather current conditions and today/tomorrow forecast ([#10](https://github.com/keach/t-watch-s3-custom/issues/10))
+- [ ] Gotify opportunistic notifications and pop-up display ([#11](https://github.com/keach/t-watch-s3-custom/issues/11))
 
 #### Later candidates
 
@@ -212,6 +213,29 @@ has a 10-minute cooldown; data older than 24 hours is replaced by an update
 prompt on the clock. Wi-Fi started only for weather is disconnected afterward,
 while a manually established connection is preserved. API keys and request
 URLs are never logged.
+
+### Gotify configuration
+
+Copy `include/gotify_config.example.h` to the ignored
+`include/gotify_config.h`, then set the HTTPS server URL and a Gotify Client
+Token. An application token can send messages but cannot read them, so it
+cannot be used by the watch.
+
+```cpp
+inline constexpr GotifyConfig kGotifyConfig = {
+    "https://gotify.example.com",
+    "YOUR_GOTIFY_CLIENT_TOKEN",
+};
+```
+
+Open `APPS` → `GOTIFY` to inspect status or use `CHECK NOW`. The watch checks
+automatically while the screen is awake, with a five-minute minimum interval.
+It does not wake from Light Sleep solely for Gotify. The first successful
+connection establishes the current newest message as the starting point so
+old server history is not displayed in bulk. Later messages are presented
+oldest first in a Japanese-capable pop-up. Dismissing a message persists its
+ID to prevent duplicate notification after a reboot. The Client Token and
+complete request URL are never logged.
 
 ### Build
 
@@ -492,6 +516,7 @@ flowchart TD
 | バッテリー状態 | ○ | ○ | 左上に常時表示する簡潔な残量、充電、USB給電、低残量表示 |
 | Wi-Fi・NTP | ○ | ○ | Wi-Fi状態、再接続・切断操作、複数固定ネットワーク、自動同期の永続化、手動`SYNC NOW`、RTC更新、接続元に応じたWi-Fi停止 |
 | 天気 | ○ |  | OpenWeatherの現在天気・今日明日予報のキャッシュ、時計画面の最高・最低気温、手動更新、接続元に応じたWi-Fi停止 |
+| Gotify通知 | ○ |  | 画面表示中の省電力なREST確認、手動確認、メッセージ位置の永続化、日本語ポップアップ、共通の音・振動設定 |
 | 明るさ設定 | ○ | ○ | 即時プレビュー、`SAVE`/`CANCEL`、NVS永続化を備えた独立画面 |
 | 設定ハブ | ○ |  | 時計画面の`SET`から`DATE & TIME`、`POWER & DISPLAY`、`BRIGHTNESS`、`WI-FI & NTP`サブメニュー、および`ABOUT`画面を開く構成 |
 | 設定初期化 | ○ | ○ | 確認画面を経て、明るさ・画面時間・時計形式・NTP自動同期を即時およびNVS上で初期値へ戻す |
@@ -531,8 +556,8 @@ flowchart TD
 
 #### 次のマイルストーン：ネットワーク情報
 
-- [ ] OpenWeatherの現在天気・今日明日予報 ([#10](https://github.com/keach/t-watch-s3-custom/issues/10))
-- [ ] Gotifyのバックグラウンド通知とポップアップ表示
+- [x] OpenWeatherの現在天気・今日明日予報 ([#10](https://github.com/keach/t-watch-s3-custom/issues/10))
+- [ ] Gotifyの機会駆動通知とポップアップ表示（[#11](https://github.com/keach/t-watch-s3-custom/issues/11)）
 
 #### 将来の候補
 
@@ -665,6 +690,27 @@ inline constexpr WeatherConfig kWeatherConfig = {
 には10分のクールダウンがあり、24時間を超えたデータは時計画面で更新案内に置き換え
 ます。天気取得のためだけに開始したWi-Fiは取得後に切断し、Wi-Fi画面から手動接続した
 通信は維持します。APIキーとリクエストURLはログへ出力しません。
+
+### Gotify設定
+
+`include/gotify_config.example.h`を、Git管理外の
+`include/gotify_config.h`へコピーし、HTTPSのサーバーURLとGotifyのClient Tokenを
+設定します。Application Tokenは送信用で通知を読み取れないため、時計では使用
+できません。
+
+```cpp
+inline constexpr GotifyConfig kGotifyConfig = {
+    "https://gotify.example.com",
+    "YOUR_GOTIFY_CLIENT_TOKEN",
+};
+```
+
+`APPS` → `GOTIFY`で状態を確認し、`CHECK NOW`で手動確認できます。画面表示中は
+5分以上の間隔を空けて自動確認しますが、Gotifyだけを目的としてLight Sleepから
+定時復帰することはありません。初回接続ではサーバー上の最新メッセージを開始位置
+として、過去の通知を大量表示しません。それ以降の新着は古い順に日本語対応の
+ポップアップへ表示し、閉じたメッセージIDをNVSへ保存して再起動後の重複通知を
+防ぎます。Client Tokenと完全なリクエストURLはログへ出力しません。
 
 ### ビルド
 

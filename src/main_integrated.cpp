@@ -4,8 +4,14 @@
 #include <string.h>
 
 #include "app_hub_screen.h"
+#include "gotify_fetcher.h"
+#include "gotify_screen.h"
+#include "gotify_store.h"
+#include "gotify_config_types.h"
 #include "kitchen_timer_app.h"
+#include "notification_settings_screen.h"
 #include "notification_settings_store.h"
+#include "notification_sound_settings_screen.h"
 #include "notification_volume_screen.h"
 #include "pomodoro_timer_app.h"
 #include "scheduled_alarm_app.h"
@@ -19,6 +25,12 @@
 #else
 inline constexpr WeatherConfig kWeatherConfig = {nullptr, "WEATHER", nullptr,
                                                   nullptr};
+#endif
+
+#if __has_include("gotify_config.h")
+#include "gotify_config.h"
+#else
+inline constexpr GotifyConfig kGotifyConfig = {nullptr, nullptr};
 #endif
 
 namespace {
@@ -59,6 +71,8 @@ NotificationOutputState end_notification_outputs[] = {
     {NotificationTarget::PomodoroTimer, kDefaultNotificationSoundPreset,
      false, false},
     {NotificationTarget::ScheduledAlarm, kDefaultNotificationSoundPreset,
+     false, false},
+    {NotificationTarget::Gotify, kDefaultNotificationSoundPreset,
      false, false},
 };
 float notification_audio_phase = 0.0F;
@@ -112,6 +126,33 @@ NotificationVolumeScreen notification_volume_screen(kBackgroundColor,
                                                      kMutedColor,
                                                      kButtonColor);
 NotificationSettingsStore notification_settings_store;
+GotifyStore gotify_store;
+GotifyScreen gotify_screen(kBackgroundColor, kPrimaryColor, kAccentColor,
+                           kMutedColor, kButtonColor);
+NotificationSettingsScreen gotify_notification_settings_screen(
+    kBackgroundColor, kPrimaryColor, kAccentColor, kMutedColor, kButtonColor);
+NotificationSoundSettingsScreen gotify_sound_settings_screen(
+    kBackgroundColor, kPrimaryColor, kAccentColor, kMutedColor, kButtonColor);
+enum class GotifyControllerState : uint8_t { Idle, Connecting, Fetching };
+GotifyControllerState gotify_controller_state = GotifyControllerState::Idle;
+QueueHandle_t gotify_result_queue = nullptr;
+bool gotify_owns_wifi = false;
+bool gotify_initialized = false;
+uint64_t gotify_last_message_id = 0;
+uint32_t gotify_last_check_started_ms = 0;
+bool gotify_check_has_started = false;
+time_t gotify_last_check_epoch = 0;
+const char *gotify_last_result = "READY";
+GotifyMessage gotify_pending_messages[kGotifyMaximumMessages] = {};
+size_t gotify_pending_count = 0;
+size_t gotify_pending_index = 0;
+NotificationMode gotify_notification_mode =
+    NotificationMode::SoundAndVibration;
+NotificationSoundPreset gotify_notification_sound =
+    kDefaultNotificationSoundPreset;
+
+void previewNotificationSound(NotificationSoundPreset preset, void *context);
+bool startGotifyOnConnectedWiFi(bool owns_wifi);
 
 void fillNotificationAudioSamples(uint16_t frequency_hz,
                                   NotificationVolumeLevel volume_level)
@@ -254,15 +295,20 @@ void refreshWeatherScreen(WeatherScreenState state,
 
 void finishWeatherRequest()
 {
-    if (weather_owns_wifi) {
+    const bool owned_wifi = weather_owns_wifi;
+    weather_owns_wifi = false;
+    weather_controller_state = WeatherControllerState::Idle;
+    setApplicationRadioBusy(false);
+    if (WiFi.status() == WL_CONNECTED &&
+        startGotifyOnConnectedWiFi(owned_wifi)) {
+        return;
+    }
+    if (owned_wifi) {
         WiFi.disconnect(true, false);
         wifi_connection_result = WiFiConnectionResult::Unknown;
         refreshWiFiScreen();
         refreshTimeSyncScreen();
     }
-    weather_owns_wifi = false;
-    weather_controller_state = WeatherControllerState::Idle;
-    setApplicationRadioBusy(false);
 }
 
 void weatherFetchTask(void *)
@@ -451,6 +497,8 @@ size_t notificationOutputIndex(NotificationTarget target)
         return 1;
     case NotificationTarget::ScheduledAlarm:
         return 2;
+    case NotificationTarget::Gotify:
+        return 3;
     }
     return 0;
 }
@@ -497,6 +545,276 @@ void setEndNotificationOutput(NotificationOutputState output, void *)
             instance.drv.stop();
         }
     }
+}
+
+bool gotifyConfigurationAvailable()
+{
+    return kGotifyConfig.server_url != nullptr &&
+           kGotifyConfig.client_token != nullptr &&
+           strncmp(kGotifyConfig.server_url, "https://", 8) == 0 &&
+           kGotifyConfig.client_token[0] != '\0' &&
+           strncmp(kGotifyConfig.client_token, "YOUR_", 5) != 0;
+}
+
+void refreshGotifyScreen()
+{
+    gotify_screen.update(
+        gotifyConfigurationAvailable(),
+        gotify_controller_state != GotifyControllerState::Idle,
+        gotify_last_check_epoch, gotify_last_result, gotify_last_message_id);
+}
+
+void stopGotifyNotification()
+{
+    setEndNotificationOutput(
+        {NotificationTarget::Gotify, gotify_notification_sound, false, false},
+        nullptr);
+}
+
+bool higherPriorityNotificationActive()
+{
+    return kitchen_timer_app.state() == KitchenTimerState::Alerting ||
+           pomodoro_timer_app.state() == PomodoroState::Alerting ||
+           scheduled_alarm_app.alerting();
+}
+
+void showNextGotifyMessage()
+{
+    if (gotify_pending_index >= gotify_pending_count ||
+        higherPriorityNotificationActive()) {
+        return;
+    }
+    wakeScreen();
+    last_activity_ms = millis();
+    gotify_screen.showMessage(gotify_pending_messages[gotify_pending_index]);
+    const bool sound =
+        gotify_notification_mode != NotificationMode::VibrationOnly;
+    const bool vibration =
+        gotify_notification_mode != NotificationMode::SoundOnly;
+    setEndNotificationOutput(
+        {NotificationTarget::Gotify, gotify_notification_sound,
+         sound, vibration}, nullptr);
+}
+
+void dismissGotifyMessage(void *)
+{
+    last_activity_ms = millis();
+    stopGotifyNotification();
+    gotify_screen.hideMessage();
+    if (gotify_pending_index < gotify_pending_count) {
+        gotify_last_message_id =
+            gotify_pending_messages[gotify_pending_index].id;
+        gotify_initialized = true;
+        if (!gotify_store.save(gotify_initialized, gotify_last_message_id))
+            Serial.println("Gotify state: save failed");
+        ++gotify_pending_index;
+    }
+    if (gotify_pending_index < gotify_pending_count) showNextGotifyMessage();
+    refreshGotifyScreen();
+}
+
+void finishGotifyRequest()
+{
+    if (gotify_owns_wifi) {
+        WiFi.disconnect(true, false);
+        wifi_connection_result = WiFiConnectionResult::Unknown;
+        refreshWiFiScreen();
+        refreshTimeSyncScreen();
+    }
+    gotify_owns_wifi = false;
+    gotify_controller_state = GotifyControllerState::Idle;
+    setApplicationRadioBusy(false);
+}
+
+void gotifyFetchTask(void *)
+{
+    const GotifyFetchResult result = fetchGotifyMessages(
+        kGotifyConfig.server_url, kGotifyConfig.client_token,
+        gotify_last_message_id, !gotify_initialized);
+    xQueueSend(gotify_result_queue, &result, portMAX_DELAY);
+    vTaskDelete(nullptr);
+}
+
+void startGotifyFetch()
+{
+    gotify_controller_state = GotifyControllerState::Fetching;
+    if (xTaskCreate(gotifyFetchTask, "gotify-fetch", 12288, nullptr, 1,
+                    nullptr) != pdPASS) {
+        finishGotifyRequest();
+        gotify_last_result = "TASK START FAILED";
+        refreshGotifyScreen();
+    }
+}
+
+bool startGotifyOnConnectedWiFi(bool owns_wifi)
+{
+    const uint32_t now_ms = millis();
+    if (gotify_controller_state != GotifyControllerState::Idle ||
+        gotify_screen.messageVisible() ||
+        gotify_pending_index < gotify_pending_count ||
+        !gotifyConfigurationAvailable() || gotify_result_queue == nullptr ||
+        WiFi.status() != WL_CONNECTED ||
+        !gotifyAutomaticCheckDue(now_ms, gotify_last_check_started_ms,
+                                 gotify_check_has_started)) {
+        return false;
+    }
+    gotify_last_check_started_ms = now_ms;
+    gotify_check_has_started = true;
+    gotify_last_result = "CHECKING...";
+    gotify_owns_wifi = owns_wifi;
+    setApplicationRadioBusy(true);
+    startGotifyFetch();
+    refreshGotifyScreen();
+    return true;
+}
+
+bool handOffConnectedRadioToGotify(bool owns_wifi, void *)
+{
+    return startGotifyOnConnectedWiFi(owns_wifi);
+}
+
+void requestGotifyCheck(bool manual)
+{
+    if (gotify_controller_state != GotifyControllerState::Idle ||
+        gotify_screen.messageVisible() ||
+        gotify_pending_index < gotify_pending_count || isRadioBusy()) return;
+    if (!gotifyConfigurationAvailable()) {
+        gotify_last_result = "CHECK CONFIG";
+        refreshGotifyScreen();
+        return;
+    }
+    if (gotify_result_queue == nullptr) {
+        gotify_last_result = "GOTIFY UNAVAILABLE";
+        refreshGotifyScreen();
+        return;
+    }
+    const uint32_t now_ms = millis();
+    if (!manual && !gotifyAutomaticCheckDue(
+                       now_ms, gotify_last_check_started_ms,
+                       gotify_check_has_started)) return;
+    gotify_last_check_started_ms = now_ms;
+    gotify_check_has_started = true;
+    gotify_last_result = "CHECKING...";
+    gotify_owns_wifi = WiFi.status() != WL_CONNECTED;
+    if (gotify_owns_wifi) {
+        requestWiFiReconnect();
+        if (!isWiFiConnectionBusy()) {
+            gotify_owns_wifi = false;
+            gotify_last_result = "WI-FI FAILED";
+            refreshGotifyScreen();
+            return;
+        }
+        gotify_controller_state = GotifyControllerState::Connecting;
+        setApplicationRadioBusy(true);
+    } else {
+        setApplicationRadioBusy(true);
+        startGotifyFetch();
+    }
+    refreshGotifyScreen();
+}
+
+void checkGotifyNow(void *)
+{
+    last_activity_ms = millis();
+    requestGotifyCheck(true);
+}
+
+void processGotify()
+{
+    if (screen_on) requestGotifyCheck(false);
+    if (gotify_screen.messageVisible() && higherPriorityNotificationActive()) {
+        gotify_screen.hideMessage();
+        stopGotifyNotification();
+    }
+    if (gotify_controller_state == GotifyControllerState::Connecting) {
+        if (WiFi.status() == WL_CONNECTED && !isWiFiConnectionBusy()) {
+            startGotifyFetch();
+        } else if (!isWiFiConnectionBusy() &&
+                   wifi_connection_result == WiFiConnectionResult::Failed) {
+            finishGotifyRequest();
+            gotify_last_result = "WI-FI FAILED";
+            gotify_last_check_epoch = time(nullptr);
+            refreshGotifyScreen();
+        }
+    }
+    GotifyFetchResult result;
+    if (gotify_result_queue != nullptr &&
+        xQueueReceive(gotify_result_queue, &result, 0) == pdTRUE) {
+        finishGotifyRequest();
+        gotify_last_check_epoch = time(nullptr);
+        if (!result.success) {
+            gotify_last_result = gotifyFetchErrorText(result.error);
+        } else if (!gotify_initialized) {
+            if (result.message_count > 0)
+                gotify_last_message_id =
+                    result.messages[result.message_count - 1].id;
+            gotify_initialized = true;
+            gotify_store.save(true, gotify_last_message_id);
+            gotify_last_result = "READY";
+        } else if (result.message_count == 0) {
+            gotify_last_result = "NO NEW MESSAGES";
+        } else {
+            memcpy(gotify_pending_messages, result.messages,
+                   result.message_count * sizeof(GotifyMessage));
+            gotify_pending_count = result.message_count;
+            gotify_pending_index = 0;
+            gotify_last_result = "NEW MESSAGES";
+            showNextGotifyMessage();
+        }
+        refreshGotifyScreen();
+    }
+    if (!gotify_screen.messageVisible() &&
+        gotify_pending_index < gotify_pending_count)
+        showNextGotifyMessage();
+}
+
+void showGotify(void *)
+{
+    last_activity_ms = millis();
+    refreshGotifyScreen();
+    gotify_screen.show();
+}
+
+void showAppsFromGotify(void *)
+{
+    last_activity_ms = millis();
+    app_hub_screen.show(true);
+}
+
+void showGotifyNotificationSettings(void *)
+{
+    gotify_notification_settings_screen.show(
+        gotify_notification_mode, gotify_notification_sound);
+}
+
+void saveGotifyNotificationSettings(NotificationMode mode,
+                                    NotificationSoundPreset preset, void *)
+{
+    gotify_notification_mode = mode;
+    gotify_notification_sound = preset;
+    notification_settings_store.saveMode(NotificationTarget::Gotify, mode);
+    notification_settings_store.saveSoundPreset(NotificationTarget::Gotify,
+                                                 preset);
+}
+
+void showGotifySoundSettings(NotificationSoundPreset preset, void *)
+{
+    gotify_sound_settings_screen.show(preset);
+}
+
+void selectGotifySound(NotificationSoundPreset preset, void *)
+{
+    gotify_notification_settings_screen.updateSoundPreset(preset);
+}
+
+void previewGotifySound(NotificationSoundPreset preset, void *)
+{
+    previewNotificationSound(preset, nullptr);
+}
+
+void closeGotifySoundSettings(void *)
+{
+    gotify_notification_settings_screen.showPending();
 }
 
 void startNotificationSoundPreview(NotificationSoundPreset preset,
@@ -788,9 +1106,15 @@ void setup()
 
     weather_result_queue = xQueueCreate(1, sizeof(WeatherFetchResult));
     weather_store.load(weather_snapshot);
+    gotify_result_queue = xQueueCreate(1, sizeof(GotifyFetchResult));
+    gotify_store.load(gotify_initialized, gotify_last_message_id);
 
     notification_master_volume_level =
         notification_settings_store.loadMasterVolume();
+    gotify_notification_mode =
+        notification_settings_store.loadMode(NotificationTarget::Gotify);
+    gotify_notification_sound = notification_settings_store.loadSoundPreset(
+        NotificationTarget::Gotify);
     initializeNotificationAudio();
     instance.powerControl(POWER_SPEAK, false);
 
@@ -801,6 +1125,8 @@ void setup()
                           showScheduledAlarm,
                           nullptr,
                           showAlarmVolume,
+                          nullptr,
+                          showGotify,
                           nullptr,
                           showClockFromApps,
                           nullptr);
@@ -830,6 +1156,7 @@ void setup()
                                nullptr);
     scheduled_alarm_app.setUse24HourClock(use_24_hour_clock);
     setClockAdjustedCallback(rescheduleAlarmAfterClockAdjustment, nullptr);
+    setConnectedRadioReleaseCallback(handOffConnectedRadioToGotify, nullptr);
     notification_volume_screen.create(
         saveNotificationMasterVolume,
         nullptr,
@@ -839,6 +1166,16 @@ void setup()
         nullptr);
     weather_screen.create(refreshWeather, nullptr,
                           showClockFromWeather, nullptr);
+    gotify_screen.create(checkGotifyNow, nullptr,
+                         showGotifyNotificationSettings, nullptr,
+                         showAppsFromGotify, nullptr,
+                         dismissGotifyMessage, nullptr);
+    gotify_notification_settings_screen.create(
+        "GOTIFY SETTINGS", saveGotifyNotificationSettings, nullptr,
+        showGotifySoundSettings, nullptr, showGotify, nullptr);
+    gotify_sound_settings_screen.create(
+        selectGotifySound, nullptr, previewGotifySound, nullptr,
+        closeGotifySoundSettings, nullptr);
 
     createButton(clock_screen,
                  "APPS",
@@ -865,6 +1202,7 @@ void loop()
     processWiFiConnection();
     processTimeSync();
     processWeather();
+    processGotify();
     updateTimeSyncNotification();
     const uint32_t now_ms = millis();
     kitchen_timer_app.update(now_ms);

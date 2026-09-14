@@ -22,6 +22,8 @@ public:
                 void *scheduled_alarm_context,
                 ActionCallback alarm_volume_callback,
                 void *alarm_volume_context,
+                ActionCallback gotify_callback,
+                void *gotify_context,
                 ActionCallback back_callback,
                 void *back_context);
 
@@ -57,5 +59,6 @@ private:
     ActionBinding pomodoro_timer_binding_ = {};
     ActionBinding scheduled_alarm_binding_ = {};
     ActionBinding alarm_volume_binding_ = {};
+    ActionBinding gotify_binding_ = {};
     ActionBinding back_binding_ = {};
 };
