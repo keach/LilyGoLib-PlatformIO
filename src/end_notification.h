@@ -8,6 +8,7 @@ enum class NotificationTarget : uint8_t {
     KitchenTimer,
     PomodoroTimer,
     ScheduledAlarm,
+    Gotify,
 };
 
 enum class NotificationMode : uint8_t {

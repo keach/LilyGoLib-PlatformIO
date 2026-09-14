@@ -191,6 +191,9 @@ bool tilt_wake_available = false;
 using ClockAdjustedCallback = void (*)(time_t now_epoch, void *context);
 ClockAdjustedCallback clock_adjusted_callback = nullptr;
 void *clock_adjusted_context = nullptr;
+using ConnectedRadioReleaseCallback = bool (*)(bool owns_wifi, void *context);
+ConnectedRadioReleaseCallback connected_radio_release_callback = nullptr;
+void *connected_radio_release_context = nullptr;
 
 void syncClockFromRtc();
 void updateBatteryStatus(lv_timer_t *);
@@ -210,6 +213,13 @@ void setClockAdjustedCallback(ClockAdjustedCallback callback, void *context)
 {
     clock_adjusted_callback = callback;
     clock_adjusted_context = context;
+}
+
+void setConnectedRadioReleaseCallback(ConnectedRadioReleaseCallback callback,
+                                      void *context)
+{
+    connected_radio_release_callback = callback;
+    connected_radio_release_context = context;
 }
 
 void notifyClockAdjusted()
@@ -1004,7 +1014,12 @@ void stopTimeSyncRadio()
     if (time_sync_state == TimeSyncState::WaitingForNtp) {
         esp_sntp_stop();
     }
-    if (time_sync_owns_wifi_connection) {
+    const bool connection_handed_off =
+        WiFi.status() == WL_CONNECTED &&
+        connected_radio_release_callback != nullptr &&
+        connected_radio_release_callback(time_sync_owns_wifi_connection,
+                                         connected_radio_release_context);
+    if (time_sync_owns_wifi_connection && !connection_handed_off) {
         WiFi.disconnect(true, false);
     }
     time_sync_state = TimeSyncState::Idle;

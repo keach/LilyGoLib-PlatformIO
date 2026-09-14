@@ -108,6 +108,8 @@ const char *NotificationSettingsStore::modeKeyForTarget(
         return "pomodoro_mode";
     case NotificationTarget::ScheduledAlarm:
         return "alarm_mode";
+    case NotificationTarget::Gotify:
+        return "gotify_mode";
     }
     return "kitchen_mode";
 }
@@ -122,6 +124,8 @@ const char *NotificationSettingsStore::soundKeyForTarget(
         return "pomodoro_sound";
     case NotificationTarget::ScheduledAlarm:
         return "alarm_sound";
+    case NotificationTarget::Gotify:
+        return "gotify_sound";
     }
     return "kitchen_sound";
 }
